@@ -374,8 +374,31 @@
 
   els.uploadBtn.addEventListener("click", function(){ els.uploadInput.click(); });
 
-  function renderUploadProgress(done, total, currentName){
-    var pct = total ? Math.round((done / total) * 100) : 0;
+  function callDriveUploadXHR(payload, onProgress){
+    return new Promise(function(resolve, reject){
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", SUPABASE_URL + "/functions/v1/drive");
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.setRequestHeader("Authorization", "Bearer " + ANON_KEY);
+      xhr.setRequestHeader("apikey", ANON_KEY);
+      if (xhr.upload && onProgress){
+        xhr.upload.onprogress = function(e){
+          if (e.lengthComputable) onProgress(e.loaded, e.total);
+        };
+      }
+      xhr.onload = function(){
+        var json = {};
+        try { json = JSON.parse(xhr.responseText); } catch(e){}
+        if (xhr.status >= 200 && xhr.status < 300){ resolve(json); }
+        else { reject(new Error(json.error || ("HTTP " + xhr.status))); }
+      };
+      xhr.onerror = function(){ reject(new Error("Error de red")); };
+      xhr.send(JSON.stringify(payload));
+    });
+  }
+
+  function renderUploadProgress(done, total, currentName, pct){
+    pct = Math.max(0, Math.min(100, Math.round(pct || 0)));
     els.uploadStatus.innerHTML =
       '<div class="banner info upload-banner">' +
         '<div class="row1">' +
@@ -390,22 +413,31 @@
     files = Array.prototype.slice.call(files || []);
     if (!files.length) return;
     var done = 0;
-    renderUploadProgress(0, files.length, files[0] && files[0].name);
+    var totalBytes = files.reduce(function(sum, f){ return sum + (f.size || 1); }, 0) || 1;
+    var bytesDone = 0;
+    renderUploadProgress(0, files.length, files[0] && files[0].name, 0);
 
     var chain = Promise.resolve();
     var failed = [];
     files.forEach(function(file){
       chain = chain.then(function(){
-        renderUploadProgress(done, files.length, file.name);
+        renderUploadProgress(done, files.length, file.name, (bytesDone / totalBytes) * 100);
         return fileToBase64(file).then(function(base64){
-          return callDrive({ action: "upload", fileName: file.name, mimeType: file.type || "application/octet-stream", base64 });
+          return callDriveUploadXHR({ action: "upload", fileName: file.name, mimeType: file.type || "application/octet-stream", base64: base64 }, function(loaded, total){
+            // El POST real pesa ~33% más que el archivo (por la codificación base64);
+            // lo escalamos para que la barra refleje el tamaño real del archivo.
+            var approx = Math.min(loaded / total, 1) * (file.size || 0);
+            renderUploadProgress(done, files.length, file.name, ((bytesDone + approx) / totalBytes) * 100);
+          });
         }).then(function(){
           done++;
-          renderUploadProgress(done, files.length, files[done] && files[done].name);
+          bytesDone += (file.size || 1);
+          renderUploadProgress(done, files.length, files[done] && files[done].name, (bytesDone / totalBytes) * 100);
         }).catch(function(err){
           done++;
+          bytesDone += (file.size || 1);
           failed.push(file.name + ": " + err.message);
-          renderUploadProgress(done, files.length, files[done] && files[done].name);
+          renderUploadProgress(done, files.length, files[done] && files[done].name, (bytesDone / totalBytes) * 100);
         });
       });
     });
