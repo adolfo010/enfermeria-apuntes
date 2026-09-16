@@ -296,7 +296,11 @@
     }
     html += '<div class="preview-title">' + escapeHtml(file.name) + '</div>';
     html += '<div class="preview-path">' + escapeHtml(extBadge(file.name, file.mimeType)) + (file.size ? "  ·  " + Math.round(file.size/1024) + " KB" : "") + '</div>';
-    html += '<div class="preview-actions"><a href="' + openUrl + '" target="_blank" rel="noopener"><button type="button">Abrir en Drive ↗</button></a></div>';
+    var downloadUrl = "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(file.id);
+    html += '<div class="preview-actions">' +
+      '<a href="' + downloadUrl + '"><button type="button">Descargar ⬇</button></a>' +
+      '<a href="' + openUrl + '" target="_blank" rel="noopener"><button type="button" class="ghost">Abrir en Drive ↗</button></a>' +
+    '</div>';
     els.preview.innerHTML = html;
   }
 
