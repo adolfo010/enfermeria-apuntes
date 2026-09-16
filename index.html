@@ -8,38 +8,38 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
   :root{
-    --bg:#EFF3F1;
+    --bg:#FCF1F5;
     --surface:#FFFFFF;
-    --surface-2:#E4EAE7;
-    --ink:#1C2B29;
-    --muted:#5B6F6B;
-    --line:#D3DCD8;
-    --accent:#2E6F63;
+    --surface-2:#F8E3EC;
+    --ink:#4A2436;
+    --muted:#9C6E80;
+    --line:#F2D3E1;
+    --accent:#D9688F;
     --accent-ink:#FFFFFF;
-    --accent-soft:#DCEAE6;
-    --warn:#B5651D;
-    --warn-soft:#F5E4D3;
-    --good:#3F7D5C;
-    --good-soft:#DEEEE3;
-    --danger:#B23A3A;
-    --danger-soft:#F6E1E1;
-    --shadow: 0 1px 2px rgba(28,43,41,0.06), 0 6px 16px rgba(28,43,41,0.07);
+    --accent-soft:#FBE1EA;
+    --warn:#C17A3D;
+    --warn-soft:#F6E6D6;
+    --good:#5C9C81;
+    --good-soft:#E1EFE8;
+    --danger:#C2504F;
+    --danger-soft:#F6E0DF;
+    --shadow: 0 1px 2px rgba(74,36,54,0.06), 0 6px 16px rgba(74,36,54,0.08);
     --font-body:'Work Sans', system-ui, -apple-system, sans-serif;
     --font-mono:'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#12191A; --surface:#1A2422; --surface-2:#22302C; --ink:#E7EEEB; --muted:#8FA39E;
-      --line:#2C3B37; --accent:#5FB3A1; --accent-ink:#0B1512; --accent-soft:#1E3934;
-      --warn:#E0965A; --warn-soft:#3A2A1B; --good:#79C39B; --good-soft:#1D362B;
-      --danger:#E28080; --danger-soft:#3A2020; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
+      --bg:#2B1D25; --surface:#3B2732; --surface-2:#4A3340; --ink:#F7E3ED; --muted:#CB9FB2;
+      --line:#5A3F4C; --accent:#EA95B4; --accent-ink:#2B1017; --accent-soft:#4F2E3B;
+      --warn:#E4A467; --warn-soft:#432F1E; --good:#8ECBAD; --good-soft:#25382E;
+      --danger:#E58F8E; --danger-soft:#432525; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
     }
   }
   :root[data-theme="dark"]{
-    --bg:#12191A; --surface:#1A2422; --surface-2:#22302C; --ink:#E7EEEB; --muted:#8FA39E;
-    --line:#2C3B37; --accent:#5FB3A1; --accent-ink:#0B1512; --accent-soft:#1E3934;
-    --warn:#E0965A; --warn-soft:#3A2A1B; --good:#79C39B; --good-soft:#1D362B;
-    --danger:#E28080; --danger-soft:#3A2020; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
+    --bg:#2B1D25; --surface:#3B2732; --surface-2:#4A3340; --ink:#F7E3ED; --muted:#CB9FB2;
+    --line:#5A3F4C; --accent:#EA95B4; --accent-ink:#2B1017; --accent-soft:#4F2E3B;
+    --warn:#E4A467; --warn-soft:#432F1E; --good:#8ECBAD; --good-soft:#25382E;
+    --danger:#E58F8E; --danger-soft:#432525; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;}
@@ -115,8 +115,11 @@
     <form class="searchbar" id="searchForm">
       <input id="searchInput" type="text" placeholder="Buscar por título, materia o contenido…" autocomplete="off">
       <button type="submit" id="searchBtn">Buscar</button>
+      <button type="button" class="ghost" id="uploadBtn">Subir material ⬆</button>
+      <input type="file" id="uploadInput" multiple style="display:none;">
     </form>
   </header>
+  <div id="uploadStatus"></div>
 
   <div id="connectArea"></div>
 
@@ -224,7 +227,10 @@
     inbox: document.getElementById("inbox"),
     inboxHead: document.getElementById("inboxHead"),
     inboxBody: document.getElementById("inboxBody"),
-    inboxCount: document.getElementById("inboxCount")
+    inboxCount: document.getElementById("inboxCount"),
+    uploadBtn: document.getElementById("uploadBtn"),
+    uploadInput: document.getElementById("uploadInput"),
+    uploadStatus: document.getElementById("uploadStatus")
   };
 
   function escapeHtml(s){
@@ -343,6 +349,55 @@
       });
   }
   els.searchForm.addEventListener("submit", function(e){ e.preventDefault(); runSearch(els.searchInput.value); });
+  els.searchInput.addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ e.preventDefault(); runSearch(els.searchInput.value); }
+  });
+
+  // ---- Subir material ----
+  function fileToBase64(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(){ resolve(String(reader.result).split(",")[1]); };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  els.uploadBtn.addEventListener("click", function(){ els.uploadInput.click(); });
+
+  els.uploadInput.addEventListener("change", function(){
+    var files = Array.prototype.slice.call(els.uploadInput.files || []);
+    if (!files.length) return;
+    var done = 0;
+    els.uploadStatus.innerHTML = '<div class="banner info"><span class="spin"></span>&nbsp; Subiendo ' + files.length + ' archivo' + (files.length===1?"":"s") + '… (0/' + files.length + ')</div>';
+
+    var chain = Promise.resolve();
+    var failed = [];
+    files.forEach(function(file){
+      chain = chain.then(function(){
+        return fileToBase64(file).then(function(base64){
+          return callDrive({ action: "upload", fileName: file.name, mimeType: file.type || "application/octet-stream", base64 });
+        }).then(function(){
+          done++;
+          els.uploadStatus.innerHTML = '<div class="banner info"><span class="spin"></span>&nbsp; Subiendo… (' + done + '/' + files.length + ')</div>';
+        }).catch(function(err){
+          done++;
+          failed.push(file.name + ": " + err.message);
+        });
+      });
+    });
+    chain.then(function(){
+      els.uploadInput.value = "";
+      if (failed.length){
+        els.uploadStatus.innerHTML = '<div class="banner danger">Subieron ' + (files.length-failed.length) + ' de ' + files.length + '. Fallaron: ' + escapeHtml(failed.join(" · ")) + '</div>';
+      } else {
+        els.uploadStatus.innerHTML = '<div class="banner info">✅ Se subieron ' + files.length + ' archivo' + (files.length===1?"":"s") + ' a la carpeta Facultad. Abrí la bandeja de arriba para clasificarlos.</div>';
+        setTimeout(function(){ els.uploadStatus.innerHTML = ""; }, 6000);
+      }
+      els.inbox.classList.add("open");
+      checkFacultad();
+    });
+  });
 
   var facultadFiles = [];
   function destinoOptionsHtml(){
