@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Enfermería Roxy</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<meta name="theme-color" content="#D9688F">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
@@ -365,8 +369,8 @@
 
   els.uploadBtn.addEventListener("click", function(){ els.uploadInput.click(); });
 
-  els.uploadInput.addEventListener("change", function(){
-    var files = Array.prototype.slice.call(els.uploadInput.files || []);
+  function uploadFiles(files){
+    files = Array.prototype.slice.call(files || []);
     if (!files.length) return;
     var done = 0;
     els.uploadStatus.innerHTML = '<div class="banner info"><span class="spin"></span>&nbsp; Subiendo ' + files.length + ' archivo' + (files.length===1?"":"s") + '… (0/' + files.length + ')</div>';
@@ -386,8 +390,7 @@
         });
       });
     });
-    chain.then(function(){
-      els.uploadInput.value = "";
+    return chain.then(function(){
       if (failed.length){
         els.uploadStatus.innerHTML = '<div class="banner danger">Subieron ' + (files.length-failed.length) + ' de ' + files.length + '. Fallaron: ' + escapeHtml(failed.join(" · ")) + '</div>';
       } else {
@@ -397,7 +400,48 @@
       els.inbox.classList.add("open");
       checkFacultad();
     });
+  }
+
+  els.uploadInput.addEventListener("change", function(){
+    uploadFiles(els.uploadInput.files);
+    els.uploadInput.value = "";
   });
+
+  // ---- Recibir archivos compartidos desde WhatsApp u otra app (Android) ----
+  function registerServiceWorker(){
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(function(){});
+  }
+
+  function handleSharedFiles(){
+    if (!("caches" in window)) return;
+    caches.open("share-cache-v1").then(function(cache){
+      return cache.match("/__shared-file-count").then(function(res){
+        if (!res) return null;
+        return res.text().then(function(txt){ return parseInt(txt, 10) || 0; });
+      }).then(function(count){
+        if (!count){ return; }
+        var loads = [];
+        for (var i = 0; i < count; i++){
+          loads.push((function(idx){
+            return cache.match("/__shared-file-" + idx).then(function(fres){
+              if (!fres) return null;
+              var name = decodeURIComponent(fres.headers.get("X-File-Name") || ("archivo-" + idx));
+              var type = fres.headers.get("Content-Type") || "application/octet-stream";
+              return fres.blob().then(function(blob){
+                cache.delete("/__shared-file-" + idx);
+                return new File([blob], name, { type: type });
+              });
+            });
+          })(i));
+        }
+        return Promise.all(loads).then(function(files){
+          cache.delete("/__shared-file-count");
+          uploadFiles(files.filter(Boolean));
+        });
+      });
+    });
+  }
 
   var facultadFiles = [];
   function destinoOptionsHtml(){
@@ -468,8 +512,10 @@
   });
 
   function boot(){
+    registerServiceWorker();
     var params = new URLSearchParams(location.search);
-    if (params.get("auth") === "ok" || params.get("auth") === "error"){
+    var wasShare = params.get("share") === "1";
+    if (params.get("auth") === "ok" || params.get("auth") === "error" || wasShare){
       history.replaceState({}, "", location.pathname);
     }
     fetch(SUPABASE_URL + "/functions/v1/oauth/status")
@@ -478,7 +524,8 @@
         renderConnect(!!json.connected);
         if (json.connected){
           els.inbox.classList.add("open");
-          checkFacultad();
+          if (wasShare){ handleSharedFiles(); }
+          else { checkFacultad(); }
         }
       })
       .catch(function(){ renderConnect(false); });
