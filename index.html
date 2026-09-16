@@ -242,12 +242,16 @@
     return "•••";
   }
 
+  var NO_PREVIEW_TYPES = [
+    "application/zip", "application/x-zip-compressed",
+    "application/vnd.google-apps.folder"
+  ];
   function isPreviewable(mimeType){
-    return mimeType === "application/pdf" ||
-      (mimeType||"").indexOf("image/") === 0 ||
-      (mimeType||"").indexOf("google-apps.document") > -1 ||
-      (mimeType||"").indexOf("google-apps.spreadsheet") > -1 ||
-      (mimeType||"").indexOf("google-apps.presentation") > -1;
+    mimeType = mimeType || "";
+    if (NO_PREVIEW_TYPES.indexOf(mimeType) > -1) return false;
+    // Drive's /preview endpoint también renderiza Word/Excel/PowerPoint (.doc, .docx, .xls, .xlsx, .ppt, .pptx),
+    // no solo PDFs, imágenes y los formatos nativos de Google Docs/Sheets/Slides.
+    return true;
   }
 
   function callDrive(payload){
