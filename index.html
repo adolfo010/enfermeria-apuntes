@@ -104,6 +104,11 @@
   .connect-card p{margin:0;color:var(--muted);font-size:15px;max-width:560px;}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--surface-2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
+  .progress-track{width:100%;height:10px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin-top:8px;}
+  .progress-fill{height:100%;background:var(--accent);border-radius:999px;transition:width .25s ease;width:0%;}
+  .upload-banner{display:flex;flex-direction:column;gap:2px;}
+  .upload-banner .row1{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .upload-banner .filecount{font-family:var(--font-mono);font-size:13px;color:var(--muted);}
   @media (prefers-reduced-motion:reduce){.spin{animation-duration:1.4s;}}
   footer.note{text-align:center;color:var(--muted);font-size:13.5px;padding-top:6px;}
 </style>
@@ -369,24 +374,38 @@
 
   els.uploadBtn.addEventListener("click", function(){ els.uploadInput.click(); });
 
+  function renderUploadProgress(done, total, currentName){
+    var pct = total ? Math.round((done / total) * 100) : 0;
+    els.uploadStatus.innerHTML =
+      '<div class="banner info upload-banner">' +
+        '<div class="row1">' +
+          '<span><span class="spin"></span>&nbsp; Subiendo' + (currentName ? ": " + escapeHtml(currentName) : "…") + '</span>' +
+          '<span class="filecount">' + done + '/' + total + '</span>' +
+        '</div>' +
+        '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%;"></div></div>' +
+      '</div>';
+  }
+
   function uploadFiles(files){
     files = Array.prototype.slice.call(files || []);
     if (!files.length) return;
     var done = 0;
-    els.uploadStatus.innerHTML = '<div class="banner info"><span class="spin"></span>&nbsp; Subiendo ' + files.length + ' archivo' + (files.length===1?"":"s") + '… (0/' + files.length + ')</div>';
+    renderUploadProgress(0, files.length, files[0] && files[0].name);
 
     var chain = Promise.resolve();
     var failed = [];
     files.forEach(function(file){
       chain = chain.then(function(){
+        renderUploadProgress(done, files.length, file.name);
         return fileToBase64(file).then(function(base64){
           return callDrive({ action: "upload", fileName: file.name, mimeType: file.type || "application/octet-stream", base64 });
         }).then(function(){
           done++;
-          els.uploadStatus.innerHTML = '<div class="banner info"><span class="spin"></span>&nbsp; Subiendo… (' + done + '/' + files.length + ')</div>';
+          renderUploadProgress(done, files.length, files[done] && files[done].name);
         }).catch(function(err){
           done++;
           failed.push(file.name + ": " + err.message);
+          renderUploadProgress(done, files.length, files[done] && files[done].name);
         });
       });
     });
