@@ -359,15 +359,28 @@
     document.getElementById("deleteBtn").addEventListener("click", function(){
       if (!window.confirm('¿Eliminar "' + file.name + '"? Va a la papelera de Drive, se puede recuperar desde ahí por 30 días.')) return;
       callDrive({ action: "trash", fileId: file.id })
-        .then(function(){
-          renderPreview(null);
+        .then(function(res){
           if (lastSearchResults){
             lastSearchResults = lastSearchResults.filter(function(f){ return f.id !== file.id; });
             renderResults(lastSearchResults);
           }
+          if (res && res.removedOnly){
+            renderPreview(null);
+            els.preview.insertAdjacentHTML("afterbegin", '<div class="banner info">Ese archivo no era tuyo ni de Rossana (lo compartió otra persona), así que no se pudo mandar a la papelera — lo quitamos de esta carpeta para que no siga apareciendo acá.</div>');
+          } else {
+            renderPreview(null);
+          }
         })
-        .catch(function(err){ msgEl.innerHTML = '<div class="banner danger" style="margin-top:10px;">No se pudo eliminar (' + escapeHtml(err.message) + ').</div>'; });
+        .catch(function(err){ msgEl.innerHTML = '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlyDeleteError(err)) + '</div>'; });
     });
+  }
+
+  function friendlyDeleteError(err){
+    var msg = String((err && err.message) || "");
+    if (/insufficient permissions|permission/i.test(msg)){
+      return "No se puede eliminar: este archivo no es tuyo ni de Rossana — se lo compartió otra persona (un compañero, un docente) y solo esa persona puede borrarlo. No hay forma de arreglar esto desde acá; si querés, pedile a quien lo compartió que lo borre.";
+    }
+    return "No se pudo eliminar (" + msg + ").";
   }
 
   function compareVerdict(a, b){
@@ -449,13 +462,16 @@
             if (!window.confirm('¿Eliminar "' + name + '"? Va a la papelera de Drive, se puede recuperar desde ahí por 30 días.')) return;
             delBtn.disabled = true; delBtn.textContent = "Eliminando…";
             callDrive({ action: "trash", fileId: id })
-              .then(function(){
+              .then(function(res){
                 lastSearchResults = lastSearchResults.filter(function(x){ return x.id !== id; });
                 renderResults(lastSearchResults);
+                if (res && res.removedOnly){
+                  els.results.insertAdjacentHTML("afterbegin", '<div class="banner info" style="margin:6px;">Ese archivo no era tuyo ni de Rossana (lo compartió otra persona), así que no se pudo mandar a la papelera — lo quitamos de esta carpeta para que no siga apareciendo acá.</div>');
+                }
               })
               .catch(function(err){
                 delBtn.disabled = false; delBtn.textContent = "Eliminar este 🗑";
-                panel.insertAdjacentHTML("beforeend", '<div class="banner danger" style="grid-column:1/-1;">No se pudo eliminar (' + escapeHtml(err.message) + ').</div>');
+                panel.insertAdjacentHTML("beforeend", '<div class="banner danger" style="grid-column:1/-1;">' + escapeHtml(friendlyDeleteError(err)) + '</div>');
               });
           });
         });
