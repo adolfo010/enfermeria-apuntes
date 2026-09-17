@@ -90,6 +90,11 @@
   .result{display:flex;gap:12px;align-items:flex-start;padding:11px 10px;border-radius:10px;cursor:pointer;}
   .result:hover{background:var(--surface-2);}
   .result.active{background:var(--accent-soft);}
+  .result .sel-check{flex:none;margin-top:2px;width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
+  #multiSelectBar{display:flex;gap:8px;align-items:center;padding:10px 10px 0;flex-wrap:wrap;}
+  #multiSelectBar .count{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);white-space:nowrap;}
+  #multiSelectBar input{flex:1;min-width:120px;font-family:var(--font-body);font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
+  #multiSelectBar input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   .result .icon{width:34px;height:34px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10.5px;font-weight:600;color:var(--muted);flex:none;}
   .result .meta{min-width:0;flex:1;}
   .result .rtitle{font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
@@ -169,6 +174,7 @@
   <section class="split">
     <div class="panel">
       <h2>Resultados</h2>
+      <div id="multiSelectBar" style="display:none;"></div>
       <div class="results" id="results">
         <div class="empty-state"><div class="big">＿</div>Escribí algo arriba para buscar en el Drive.</div>
       </div>
@@ -483,9 +489,62 @@
     return { cls: "muted", text: "No se pudo confirmar con certeza (por ejemplo, si son Google Docs/Sheets). Compará el contenido abajo antes de eliminar." };
   }
 
+  var selectedIds = {};
+
+  function renderMultiSelectBar(){
+    var bar = document.getElementById("multiSelectBar");
+    var ids = Object.keys(selectedIds).filter(function(id){ return selectedIds[id]; });
+    if (ids.length < 2){ bar.style.display = "none"; bar.innerHTML = ""; return; }
+    bar.style.display = "flex";
+    bar.innerHTML =
+      '<span class="count">' + ids.length + ' seleccionados</span>' +
+      '<input type="text" id="multiTopic" placeholder="Tema a buscar en estos archivos — ej: huesos de la mano">' +
+      '<button type="button" id="multiSummarizeBtn">Resumir seleccionados ✨</button>' +
+      '<button type="button" class="ghost" id="multiClearBtn">Cancelar</button>';
+    document.getElementById("multiClearBtn").addEventListener("click", function(){
+      selectedIds = {};
+      renderResults(lastSearchResults);
+    });
+    document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
+      var topic = document.getElementById("multiTopic").value.trim();
+      var chosen = lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
+      summarizeMultiple(chosen, topic);
+    });
+  }
+
+  function summarizeMultiple(chosen, topic){
+    var btn = document.getElementById("multiSummarizeBtn");
+    btn.disabled = true;
+    btn.textContent = "Resumiendo…";
+    var names = chosen.map(function(f){ return f.name; });
+    els.preview.innerHTML =
+      '<div class="preview-title">Resumen combinado (' + chosen.length + ' archivos)</div>' +
+      '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
+      '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta un minuto)…</div>';
+    callDrive({
+      action: "summarize",
+      topic: topic,
+      files: chosen.map(function(f){ return { fileId: f.id, mimeType: f.mimeType, fileName: f.name }; })
+    })
+      .then(function(res){
+        btn.disabled = false;
+        btn.textContent = "Resumir seleccionados ✨";
+        els.preview.innerHTML =
+          '<div class="preview-title">Resumen combinado (' + chosen.length + ' archivos)</div>' +
+          '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
+          '<div class="summary-box">' + renderMarkdownish(res.summary) + '</div>';
+      })
+      .catch(function(err){
+        btn.disabled = false;
+        btn.textContent = "Resumir seleccionados ✨";
+        els.preview.insertAdjacentHTML("beforeend", '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlySummarizeError(err)) + '</div>');
+      });
+  }
+
   function renderResults(files){
     if (!files || !files.length){
       els.results.innerHTML = '<div class="empty-state"><div class="big">∅</div>Sin resultados. Probá con otro término.</div>';
+      document.getElementById("multiSelectBar").style.display = "none";
       return;
     }
     var byName = {};
@@ -497,6 +556,7 @@
       var hasDup = dupGroup.length > 1;
       html += '<div class="result-wrap">' +
         '<div class="result" data-id="' + escapeHtml(f.id) + '">' +
+          '<input type="checkbox" class="sel-check" data-id="' + escapeHtml(f.id) + '"' + (selectedIds[f.id] ? ' checked' : '') + '>' +
           '<div class="icon">' + escapeHtml(extBadge(f.name, f.mimeType)) + '</div>' +
           '<div class="meta"><div class="rtitle">' + escapeHtml(f.name) + '</div>' +
           '<div class="rsub">' + (f.size ? Math.round(f.size/1024) + ' KB' : 'Google Docs') + '</div></div>' +
@@ -507,10 +567,20 @@
     });
     els.results.innerHTML = html;
     var byId = {}; files.forEach(function(f){ byId[f.id] = f; });
+    renderMultiSelectBar();
+
+    Array.prototype.forEach.call(els.results.querySelectorAll(".sel-check"), function(cb){
+      cb.addEventListener("click", function(e){ e.stopPropagation(); });
+      cb.addEventListener("change", function(){
+        var id = cb.getAttribute("data-id");
+        if (cb.checked) selectedIds[id] = true; else delete selectedIds[id];
+        renderMultiSelectBar();
+      });
+    });
 
     Array.prototype.forEach.call(els.results.querySelectorAll(".result"), function(row){
       row.addEventListener("click", function(e){
-        if (e.target.closest(".compare-btn")) return;
+        if (e.target.closest(".compare-btn") || e.target.closest(".sel-check")) return;
         Array.prototype.forEach.call(els.results.querySelectorAll(".result"), function(r){ r.classList.remove("active"); });
         row.classList.add("active");
         renderPreview(byId[row.getAttribute("data-id")]);
@@ -572,6 +642,8 @@
   function runSearch(term){
     term = term.trim();
     if (!term) return;
+    selectedIds = {};
+    document.getElementById("multiSelectBar").style.display = "none";
     els.results.innerHTML = '<div class="empty-state"><span class="spin"></span>&nbsp; Buscando…</div>';
     callDrive({ action: "search", term: term })
       .then(function(payload){ lastSearchResults = payload.files || []; renderResults(lastSearchResults); })
