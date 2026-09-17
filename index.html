@@ -123,6 +123,9 @@
   #catalogBtn:hover{color:var(--ink);border-color:var(--accent);}
   #catalogBtn:disabled{opacity:0.6;cursor:default;}
   #catalogMsg{font-size:13px;}
+  .summarize-row{display:flex;gap:8px;margin-top:12px;}
+  .summarize-row input{flex:1;min-width:0;font-family:var(--font-body);font-size:14.5px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
+  .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   .summary-box{margin-top:14px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);font-size:15px;line-height:1.55;}
   .summary-box h2{font-size:17px;margin:0 0 8px;}
   .summary-box h3{font-size:15.5px;margin:16px 0 6px;}
@@ -356,9 +359,12 @@
       '<a href="' + openUrl + '" target="_blank" rel="noopener"><button type="button" class="ghost">Abrir en Drive ↗</button></a>' +
       '<button type="button" class="ghost" id="renameBtn">Renombrar ✎</button>' +
       '<button type="button" class="ghost" id="deleteBtn">Eliminar 🗑</button>' +
-      '<button type="button" class="ghost" id="summarizeBtn">Resumir con IA ✨</button>' +
     '</div>' +
     '<div id="previewActionMsg"></div>' +
+    '<div class="summarize-row">' +
+      '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
+      '<button type="button" class="ghost" id="summarizeBtn">Resumir con IA ✨</button>' +
+    '</div>' +
     '<div id="summaryResult"></div>';
     els.preview.innerHTML = html;
 
@@ -403,7 +409,8 @@
       btn.disabled = true;
       btn.textContent = "Resumiendo…";
       box.innerHTML = '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta medio minuto)…</div>';
-      callDrive({ action: "summarize", fileId: file.id, mimeType: file.mimeType })
+      var topic = document.getElementById("summarizeTopic").value.trim();
+      callDrive({ action: "summarize", fileId: file.id, mimeType: file.mimeType, topic: topic })
         .then(function(res){
           btn.disabled = false;
           btn.textContent = "Resumir con IA ✨";
