@@ -313,7 +313,7 @@
     return true;
   }
 
-  function callDrive(payload){
+  function callDrive(payload, signal){
     return fetch(SUPABASE_URL + "/functions/v1/drive", {
       method: "POST",
       headers: {
@@ -321,7 +321,8 @@
         "Authorization": "Bearer " + ANON_KEY,
         "apikey": ANON_KEY
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: signal
     }).then(function(res){
       return res.json().then(function(json){
         if (!res.ok) { var e = new Error(json.error || "error"); e.status = res.status; throw e; }
@@ -412,11 +413,15 @@
     document.getElementById("summarizeBtn").addEventListener("click", function(){
       var btn = document.getElementById("summarizeBtn");
       var box = document.getElementById("summaryResult");
+      var controller = new AbortController();
       btn.disabled = true;
       btn.textContent = "Resumiendo…";
-      box.innerHTML = '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta medio minuto)…</div>';
+      box.innerHTML =
+        '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta medio minuto)… ' +
+        '<button type="button" class="small ghost" id="cancelSummarizeBtn">Cancelar</button></div>';
+      document.getElementById("cancelSummarizeBtn").addEventListener("click", function(){ controller.abort(); });
       var topic = document.getElementById("summarizeTopic").value.trim();
-      callDrive({ action: "summarize", fileId: file.id, mimeType: file.mimeType, topic: topic })
+      callDrive({ action: "summarize", fileId: file.id, mimeType: file.mimeType, topic: topic }, controller.signal)
         .then(function(res){
           btn.disabled = false;
           btn.textContent = "Resumir con IA ✨";
@@ -425,6 +430,10 @@
         .catch(function(err){
           btn.disabled = false;
           btn.textContent = "Resumir con IA ✨";
+          if (err && err.name === "AbortError"){
+            box.innerHTML = '<div class="banner info">Cancelado.</div>';
+            return;
+          }
           box.innerHTML = '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlySummarizeError(err)) + '</div>';
         });
     });
@@ -494,13 +503,13 @@
   function renderMultiSelectBar(){
     var bar = document.getElementById("multiSelectBar");
     var ids = Object.keys(selectedIds).filter(function(id){ return selectedIds[id]; });
-    if (ids.length < 2){ bar.style.display = "none"; bar.innerHTML = ""; return; }
+    if (ids.length < 1){ bar.style.display = "none"; bar.innerHTML = ""; return; }
     bar.style.display = "flex";
     bar.innerHTML =
-      '<span class="count">' + ids.length + ' seleccionados</span>' +
-      '<input type="text" id="multiTopic" placeholder="Tema a buscar en estos archivos — ej: huesos de la mano">' +
-      '<button type="button" id="multiSummarizeBtn">Resumir seleccionados ✨</button>' +
-      '<button type="button" class="ghost" id="multiClearBtn">Cancelar</button>';
+      '<span class="count">' + ids.length + (ids.length === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
+      '<input type="text" id="multiTopic" placeholder="Tema a buscar' + (ids.length > 1 ? ' en estos archivos' : '') + ' — ej: huesos de la mano">' +
+      '<button type="button" id="multiSummarizeBtn">Resumir seleccionado' + (ids.length > 1 ? 's' : '') + ' ✨</button>' +
+      '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>';
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
       renderResults(lastSearchResults);
@@ -514,29 +523,38 @@
 
   function summarizeMultiple(chosen, topic){
     var btn = document.getElementById("multiSummarizeBtn");
+    var btnLabel = "Resumir seleccionado" + (chosen.length > 1 ? "s" : "") + " ✨";
+    var controller = new AbortController();
     btn.disabled = true;
     btn.textContent = "Resumiendo…";
     var names = chosen.map(function(f){ return f.name; });
+    var titleLabel = chosen.length > 1 ? "Resumen combinado (" + chosen.length + " archivos)" : "Resumen";
     els.preview.innerHTML =
-      '<div class="preview-title">Resumen combinado (' + chosen.length + ' archivos)</div>' +
+      '<div class="preview-title">' + titleLabel + '</div>' +
       '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
-      '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta un minuto)…</div>';
+      '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta un minuto)… ' +
+      '<button type="button" class="small ghost" id="cancelMultiSummarizeBtn">Cancelar</button></div>';
+    document.getElementById("cancelMultiSummarizeBtn").addEventListener("click", function(){ controller.abort(); });
     callDrive({
       action: "summarize",
       topic: topic,
       files: chosen.map(function(f){ return { fileId: f.id, mimeType: f.mimeType, fileName: f.name }; })
-    })
+    }, controller.signal)
       .then(function(res){
         btn.disabled = false;
-        btn.textContent = "Resumir seleccionados ✨";
+        btn.textContent = btnLabel;
         els.preview.innerHTML =
-          '<div class="preview-title">Resumen combinado (' + chosen.length + ' archivos)</div>' +
+          '<div class="preview-title">' + titleLabel + '</div>' +
           '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
           '<div class="summary-box">' + renderMarkdownish(res.summary) + '</div>';
       })
       .catch(function(err){
         btn.disabled = false;
-        btn.textContent = "Resumir seleccionados ✨";
+        btn.textContent = btnLabel;
+        if (err && err.name === "AbortError"){
+          els.preview.insertAdjacentHTML("beforeend", '<div class="banner info">Cancelado.</div>');
+          return;
+        }
         els.preview.insertAdjacentHTML("beforeend", '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlySummarizeError(err)) + '</div>');
       });
   }
