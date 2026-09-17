@@ -94,6 +94,9 @@
   .result .meta{min-width:0;flex:1;}
   .result .rtitle{font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
   .result .rsub{margin-top:3px;font-family:var(--font-mono);font-size:12.5px;color:var(--muted);}
+  .result-wrap:not(:last-child){border-bottom:1px solid var(--line);}
+  .result-wrap .result{border-radius:10px 10px 0 0;}
+  .result-wrap:not(:has(.compare-panel[style*="grid"])) .result{border-radius:10px;}
   .empty-state{padding:34px 20px;text-align:center;color:var(--muted);font-size:15px;}
   .empty-state .big{font-family:var(--font-mono);font-size:26px;color:var(--line);margin-bottom:6px;}
   .preview-body{padding:16px;}
@@ -367,26 +370,95 @@
     });
   }
 
+  function compareVerdict(a, b){
+    if (a.md5Checksum && b.md5Checksum){
+      return a.md5Checksum === b.md5Checksum
+        ? { cls: "good", text: "✅ Son exactamente el mismo archivo (contenido idéntico)." }
+        : { cls: "warn", text: "⚠ Mismo nombre pero contenido distinto — no los borres sin revisar." };
+    }
+    if (a.size && b.size && Number(a.size) !== Number(b.size)){
+      return { cls: "warn", text: "⚠ Mismo nombre pero tamaños distintos — parecen ser archivos diferentes." };
+    }
+    return { cls: "muted", text: "No se pudo confirmar con certeza (por ejemplo, si son Google Docs/Sheets). Compará el contenido abajo antes de eliminar." };
+  }
+
   function renderResults(files){
     if (!files || !files.length){
       els.results.innerHTML = '<div class="empty-state"><div class="big">∅</div>Sin resultados. Probá con otro término.</div>';
       return;
     }
+    var byName = {};
+    files.forEach(function(f){ (byName[f.name] = byName[f.name] || []).push(f); });
+
     var html = "";
     files.forEach(function(f){
-      html += '<div class="result" data-id="' + escapeHtml(f.id) + '">' +
-        '<div class="icon">' + escapeHtml(extBadge(f.name, f.mimeType)) + '</div>' +
-        '<div class="meta"><div class="rtitle">' + escapeHtml(f.name) + '</div>' +
-        '<div class="rsub">' + (f.size ? Math.round(f.size/1024) + ' KB' : 'Google Docs') + '</div></div>' +
+      var dupGroup = byName[f.name];
+      var hasDup = dupGroup.length > 1;
+      html += '<div class="result-wrap">' +
+        '<div class="result" data-id="' + escapeHtml(f.id) + '">' +
+          '<div class="icon">' + escapeHtml(extBadge(f.name, f.mimeType)) + '</div>' +
+          '<div class="meta"><div class="rtitle">' + escapeHtml(f.name) + '</div>' +
+          '<div class="rsub">' + (f.size ? Math.round(f.size/1024) + ' KB' : 'Google Docs') + '</div></div>' +
+          (hasDup ? '<span class="pill warn" title="Hay otro resultado con el mismo nombre">⚠ Repetido</span><button type="button" class="small ghost compare-btn">Comparar</button>' : '') +
+        '</div>' +
+        (hasDup ? '<div class="compare-panel" style="display:none;"></div>' : '') +
       '</div>';
     });
     els.results.innerHTML = html;
     var byId = {}; files.forEach(function(f){ byId[f.id] = f; });
+
     Array.prototype.forEach.call(els.results.querySelectorAll(".result"), function(row){
-      row.addEventListener("click", function(){
+      row.addEventListener("click", function(e){
+        if (e.target.closest(".compare-btn")) return;
         Array.prototype.forEach.call(els.results.querySelectorAll(".result"), function(r){ r.classList.remove("active"); });
         row.classList.add("active");
         renderPreview(byId[row.getAttribute("data-id")]);
+      });
+    });
+
+    Array.prototype.forEach.call(els.results.querySelectorAll(".compare-btn"), function(btn){
+      btn.addEventListener("click", function(e){
+        e.stopPropagation();
+        var wrap = btn.closest(".result-wrap");
+        var row = wrap.querySelector(".result");
+        var file = byId[row.getAttribute("data-id")];
+        var other = byName[file.name].find(function(x){ return x.id !== file.id; });
+        var panel = wrap.querySelector(".compare-panel");
+        var showing = panel.style.display !== "none";
+        if (showing){ panel.style.display = "none"; btn.textContent = "Comparar"; return; }
+        btn.textContent = "Ocultar";
+        panel.style.display = "grid";
+        var verdict = compareVerdict(file, other);
+        function col(f, label){
+          return '<div class="compare-col">' +
+            '<div class="compare-label">' + escapeHtml(label) + '</div>' +
+            '<div class="preview-frame-wrap" style="aspect-ratio:1/1;"><iframe src="https://drive.google.com/file/d/' + f.id + '/preview" loading="lazy"></iframe></div>' +
+            '<button type="button" class="small ghost del-dup-btn" data-id="' + escapeHtml(f.id) + '">Eliminar este 🗑</button>' +
+          '</div>';
+        }
+        panel.innerHTML =
+          '<div class="banner info" style="grid-column:1/-1;">' +
+            '<span class="pill ' + verdict.cls + '">' + verdict.text + '</span>' +
+          '</div>' +
+          col(file, "Este resultado (" + Math.round((file.size||0)/1024) + " KB)") +
+          col(other, "El otro (" + Math.round((other.size||0)/1024) + " KB)");
+        Array.prototype.forEach.call(panel.querySelectorAll(".del-dup-btn"), function(delBtn){
+          delBtn.addEventListener("click", function(){
+            var id = delBtn.getAttribute("data-id");
+            var name = byId[id] ? byId[id].name : (other.id === id ? other.name : file.name);
+            if (!window.confirm('¿Eliminar "' + name + '"? Va a la papelera de Drive, se puede recuperar desde ahí por 30 días.')) return;
+            delBtn.disabled = true; delBtn.textContent = "Eliminando…";
+            callDrive({ action: "trash", fileId: id })
+              .then(function(){
+                lastSearchResults = lastSearchResults.filter(function(x){ return x.id !== id; });
+                renderResults(lastSearchResults);
+              })
+              .catch(function(err){
+                delBtn.disabled = false; delBtn.textContent = "Eliminar este 🗑";
+                panel.insertAdjacentHTML("beforeend", '<div class="banner danger" style="grid-column:1/-1;">No se pudo eliminar (' + escapeHtml(err.message) + ').</div>');
+              });
+          });
+        });
       });
     });
   }
