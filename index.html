@@ -118,7 +118,11 @@
   .upload-banner .row1{display:flex;align-items:center;justify-content:space-between;gap:8px;}
   .upload-banner .filecount{font-family:var(--font-mono);font-size:13px;color:var(--muted);}
   @media (prefers-reduced-motion:reduce){.spin{animation-duration:1.4s;}}
-  footer.note{text-align:center;color:var(--muted);font-size:13.5px;padding-top:6px;}
+  footer.note{text-align:center;color:var(--muted);font-size:13.5px;padding-top:6px;display:flex;flex-direction:column;align-items:center;gap:8px;}
+  #catalogBtn{font-family:var(--font-mono);font-size:12.5px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;}
+  #catalogBtn:hover{color:var(--ink);border-color:var(--accent);}
+  #catalogBtn:disabled{opacity:0.6;cursor:default;}
+  #catalogMsg{font-size:13px;}
 </style>
 </head>
 <body>
@@ -165,7 +169,13 @@
     </div>
   </section>
 
-  <footer class="note">Enfermería Roxy · conectado directo a Google Drive.</footer>
+  <footer class="note">
+    Enfermería Roxy · conectado directo a Google Drive.
+    <div>
+      <button type="button" id="catalogBtn">Actualizar catálogo de apuntes ↻</button>
+    </div>
+    <div id="catalogMsg"></div>
+  </footer>
 </div>
 
 <script>
@@ -253,7 +263,9 @@
     inboxCount: document.getElementById("inboxCount"),
     uploadBtn: document.getElementById("uploadBtn"),
     uploadInput: document.getElementById("uploadInput"),
-    uploadStatus: document.getElementById("uploadStatus")
+    uploadStatus: document.getElementById("uploadStatus"),
+    catalogBtn: document.getElementById("catalogBtn"),
+    catalogMsg: document.getElementById("catalogMsg")
   };
 
   function escapeHtml(s){
@@ -491,6 +503,23 @@
         els.results.innerHTML = '<div class="banner danger">No se pudo buscar (' + escapeHtml(err.message) + ').</div>';
       });
   }
+  els.catalogBtn.addEventListener("click", function(){
+    els.catalogBtn.disabled = true;
+    els.catalogBtn.textContent = "Actualizando… (puede tardar un minuto)";
+    els.catalogMsg.innerHTML = "";
+    callDrive({ action: "regenerateCatalog" })
+      .then(function(res){
+        els.catalogBtn.disabled = false;
+        els.catalogBtn.textContent = "Actualizar catálogo de apuntes ↻";
+        els.catalogMsg.innerHTML = '<span class="pill good">✅ Catálogo actualizado: ' + res.count + ' archivos indexados</span>';
+      })
+      .catch(function(err){
+        els.catalogBtn.disabled = false;
+        els.catalogBtn.textContent = "Actualizar catálogo de apuntes ↻";
+        els.catalogMsg.innerHTML = '<span class="pill warn">No se pudo actualizar (' + escapeHtml(err.message) + ')</span>';
+      });
+  });
+
   els.searchForm.addEventListener("submit", function(e){ e.preventDefault(); runSearch(els.searchInput.value); });
   els.searchInput.addEventListener("keydown", function(e){
     if (e.key === "Enter"){ e.preventDefault(); runSearch(els.searchInput.value); }
