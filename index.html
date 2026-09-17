@@ -123,6 +123,15 @@
   #catalogBtn:hover{color:var(--ink);border-color:var(--accent);}
   #catalogBtn:disabled{opacity:0.6;cursor:default;}
   #catalogMsg{font-size:13px;}
+  .summary-box{margin-top:14px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);font-size:15px;line-height:1.55;}
+  .summary-box h2{font-size:17px;margin:0 0 8px;}
+  .summary-box h3{font-size:15.5px;margin:16px 0 6px;}
+  .summary-box h4{font-size:14.5px;margin:12px 0 4px;}
+  .summary-box ul{margin:6px 0 10px;padding-left:20px;}
+  .summary-box li{margin-bottom:4px;}
+  .summary-box hr{border:none;border-top:1px solid var(--line);margin:12px 0;}
+  .summary-box p{margin:0 0 10px;}
+  .summary-box strong{color:var(--ink);}
 </style>
 </head>
 <body>
@@ -347,8 +356,10 @@
       '<a href="' + openUrl + '" target="_blank" rel="noopener"><button type="button" class="ghost">Abrir en Drive ↗</button></a>' +
       '<button type="button" class="ghost" id="renameBtn">Renombrar ✎</button>' +
       '<button type="button" class="ghost" id="deleteBtn">Eliminar 🗑</button>' +
+      '<button type="button" class="ghost" id="summarizeBtn">Resumir con IA ✨</button>' +
     '</div>' +
-    '<div id="previewActionMsg"></div>';
+    '<div id="previewActionMsg"></div>' +
+    '<div id="summaryResult"></div>';
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
@@ -385,6 +396,64 @@
         })
         .catch(function(err){ msgEl.innerHTML = '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlyDeleteError(err)) + '</div>'; });
     });
+
+    document.getElementById("summarizeBtn").addEventListener("click", function(){
+      var btn = document.getElementById("summarizeBtn");
+      var box = document.getElementById("summaryResult");
+      btn.disabled = true;
+      btn.textContent = "Resumiendo…";
+      box.innerHTML = '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta medio minuto)…</div>';
+      callDrive({ action: "summarize", fileId: file.id, mimeType: file.mimeType })
+        .then(function(res){
+          btn.disabled = false;
+          btn.textContent = "Resumir con IA ✨";
+          box.innerHTML = '<div class="summary-box">' + renderMarkdownish(res.summary) + '</div>';
+        })
+        .catch(function(err){
+          btn.disabled = false;
+          btn.textContent = "Resumir con IA ✨";
+          box.innerHTML = '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlySummarizeError(err)) + '</div>';
+        });
+    });
+  }
+
+  function friendlySummarizeError(err){
+    var msg = String((err && err.message) || "");
+    if (msg === "TOO_LARGE") return "Este archivo es muy grande para resumir por ahora (más de 18MB) — funciona bien con apuntes de clase; los libros/manuales completos todavía no.";
+    if (msg === "UNSUPPORTED_TYPE") return "Este tipo de archivo todavía no se puede resumir.";
+    if (msg === "GEMINI_NOT_CONFIGURED") return "Falta terminar de configurar el resumen con IA. Avisale a Adolfo.";
+    return "No se pudo generar el resumen (" + msg + ").";
+  }
+
+  // Convierte el texto (con formato Markdown simple que devuelve Gemini) a HTML
+  // seguro: escapa todo primero y solo después arma títulos, negrita, viñetas, etc.
+  function renderMarkdownish(text){
+    var lines = escapeHtml(text).split("\n");
+    var html = "";
+    var inList = false;
+    function closeList(){ if (inList){ html += "</ul>"; inList = false; } }
+    lines.forEach(function(line){
+      var l = line.trim();
+      if (l === "" ) { closeList(); return; }
+      if (/^(---|\*\*\*)$/.test(l)) { closeList(); html += "<hr>"; return; }
+      var h;
+      if ((h = l.match(/^####\s+(.*)/))) { closeList(); html += "<h4>" + inlineMd(h[1]) + "</h4>"; return; }
+      if ((h = l.match(/^###\s+(.*)/))) { closeList(); html += "<h4>" + inlineMd(h[1]) + "</h4>"; return; }
+      if ((h = l.match(/^##\s+(.*)/))) { closeList(); html += "<h3>" + inlineMd(h[1]) + "</h3>"; return; }
+      if ((h = l.match(/^#\s+(.*)/))) { closeList(); html += "<h2>" + inlineMd(h[1]) + "</h2>"; return; }
+      if ((h = l.match(/^[*\-]\s+(.*)/))) {
+        if (!inList){ html += "<ul>"; inList = true; }
+        html += "<li>" + inlineMd(h[1]) + "</li>";
+        return;
+      }
+      closeList();
+      html += "<p>" + inlineMd(l) + "</p>";
+    });
+    closeList();
+    return html;
+  }
+  function inlineMd(s){
+    return s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   }
 
   function friendlyDeleteError(err){
