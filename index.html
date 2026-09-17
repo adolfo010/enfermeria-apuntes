@@ -464,9 +464,9 @@
     var msg = String((err && err.message) || "");
     if (msg === "TOO_LARGE") return "Este archivo es muy grande para resumir por ahora (más de 18MB) — funciona bien con apuntes de clase; los libros/manuales completos todavía no.";
     if (msg === "UNSUPPORTED_TYPE") return "Este tipo de archivo todavía no se puede resumir.";
-    if (msg === "AI_NOT_CONFIGURED") return "Falta terminar de configurar el resumen con IA. Avisale a Adolfo.";
-    if (msg === "AI_TIMEOUT") return "La IA tardó demasiado en responder. Probá de nuevo en un rato.";
-    if (msg === "AI_BAD_RESPONSE") return "La IA devolvió una respuesta rara. Probá de nuevo en un rato.";
+    if (msg === "GEMINI_NOT_CONFIGURED") return "Falta terminar de configurar el resumen con IA. Avisale a Adolfo.";
+    if (msg === "GEMINI_TIMEOUT") return "Gemini tardó demasiado en responder. Probá de nuevo en un rato.";
+    if (msg === "GEMINI_BAD_RESPONSE") return "Gemini devolvió una respuesta rara. Probá de nuevo en un rato.";
     if (/quota exceeded|rate limit/i.test(msg)) return "Se agotó el uso gratuito de IA por ahora. Probá de nuevo más tarde.";
     return "No se pudo generar el resumen (" + msg + ").";
   }
