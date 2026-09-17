@@ -377,8 +377,8 @@
 
   function friendlyDeleteError(err){
     var msg = String((err && err.message) || "");
-    if (/insufficient permissions|permission/i.test(msg)){
-      return "No se puede eliminar: este archivo no es tuyo ni de Rossana — se lo compartió otra persona (un compañero, un docente) y solo esa persona puede borrarlo. No hay forma de arreglar esto desde acá; si querés, pedile a quien lo compartió que lo borre.";
+    if (msg === "NOT_REMOVABLE" || /insufficient permissions|permission/i.test(msg)){
+      return "No se puede eliminar ni quitar: este archivo no es tuyo ni de Rossana — se lo compartió otra persona con permisos muy restringidos (ni siquiera se puede sacar de la carpeta). No hay forma de arreglar esto desde acá; si molesta, pedile a quien lo compartió que lo borre, o simplemente ignoralo.";
     }
     return "No se pudo eliminar (" + msg + ").";
   }
