@@ -131,29 +131,6 @@
   .summarize-row{display:flex;gap:8px;margin-top:12px;}
   .summarize-row input{flex:1;min-width:0;font-family:var(--font-body);font-size:14.5px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
-  .summary-box{margin-top:14px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);font-size:15px;line-height:1.55;}
-  .summary-box h2{font-size:17px;margin:0 0 8px;}
-  .summary-box h3{font-size:15.5px;margin:16px 0 6px;}
-  .summary-box h4{font-size:14.5px;margin:12px 0 4px;}
-  .summary-box ul{margin:6px 0 10px;padding-left:20px;}
-  .summary-box li{margin-bottom:4px;}
-  .summary-box hr{border:none;border-top:1px solid var(--line);margin:12px 0;}
-  .summary-box p{margin:0 0 10px;}
-  .summary-box strong{color:var(--ink);}
-  .print-btn{margin-top:8px;}
-  #printArea{display:none;}
-  @media print{
-    body > *:not(#printArea){display:none !important;}
-    #printArea{display:block !important;padding:0;color:#000;background:#fff;font-family:var(--font-body);font-size:13pt;line-height:1.5;}
-    #printArea h1{font-size:18pt;margin:0 0 4px;}
-    #printArea .print-meta{font-size:10pt;color:#333;margin-bottom:18px;}
-    #printArea h2{font-size:15pt;margin:16px 0 6px;}
-    #printArea h3{font-size:13.5pt;margin:14px 0 5px;}
-    #printArea h4{font-size:12.5pt;margin:10px 0 4px;}
-    #printArea ul{margin:6px 0 10px;padding-left:22px;}
-    #printArea li{margin-bottom:4px;}
-    #printArea hr{border:none;border-top:1px solid #999;margin:12px 0;}
-  }
 </style>
 </head>
 <body>
@@ -209,8 +186,6 @@
     <div id="catalogMsg"></div>
   </footer>
 </div>
-
-<div id="printArea"></div>
 
 <script>
 (function(){
@@ -386,7 +361,7 @@
     '<div id="previewActionMsg"></div>' +
     '<div class="summarize-row">' +
       '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
-      '<button type="button" class="ghost" id="summarizeBtn">Resumir con IA ✨</button>' +
+      '<button type="button" class="ghost" id="summarizeBtn">Armar prompt para ChatGPT ✨</button>' +
     '</div>' +
     '<div id="summaryResult"></div>';
     els.preview.innerHTML = html;
@@ -427,92 +402,10 @@
     });
 
     document.getElementById("summarizeBtn").addEventListener("click", function(){
-      var btn = document.getElementById("summarizeBtn");
       var box = document.getElementById("summaryResult");
-      var controller = new AbortController();
-      btn.disabled = true;
-      btn.textContent = "Resumiendo…";
-      box.innerHTML =
-        '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta medio minuto)… ' +
-        '<button type="button" class="small ghost" id="cancelSummarizeBtn">Cancelar</button></div>';
-      document.getElementById("cancelSummarizeBtn").addEventListener("click", function(){ controller.abort(); });
       var topic = document.getElementById("summarizeTopic").value.trim();
-      callDrive({ action: "summarize", fileId: file.id, mimeType: file.mimeType, topic: topic }, controller.signal)
-        .then(function(res){
-          btn.disabled = false;
-          btn.textContent = "Resumir con IA ✨";
-          var summaryHtml = renderMarkdownish(res.summary);
-          box.innerHTML = '<div class="summary-box">' + summaryHtml + '</div>' +
-            '<button type="button" class="ghost print-btn" id="printSummaryBtn">Imprimir / Guardar como PDF 🖨</button>';
-          document.getElementById("printSummaryBtn").addEventListener("click", function(){
-            printSummary(file.name, summaryHtml);
-          });
-        })
-        .catch(function(err){
-          btn.disabled = false;
-          btn.textContent = "Resumir con IA ✨";
-          if (err && err.name === "AbortError"){
-            box.innerHTML = '<div class="banner info">Cancelado.</div>';
-            return;
-          }
-          box.innerHTML = '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlySummarizeError(err)) + '</div>';
-        });
+      showChatGptPrompt([file], topic, box);
     });
-  }
-
-  function friendlySummarizeError(err){
-    var msg = String((err && err.message) || "");
-    if (msg === "TOO_LARGE") return "Este archivo es muy grande para resumir por ahora (más de 18MB) — funciona bien con apuntes de clase; los libros/manuales completos todavía no.";
-    if (msg === "UNSUPPORTED_TYPE") return "Este tipo de archivo todavía no se puede resumir.";
-    if (msg === "GEMINI_NOT_CONFIGURED") return "Falta terminar de configurar el resumen con IA. Avisale a Adolfo.";
-    if (msg === "GEMINI_TIMEOUT") return "Gemini tardó demasiado en responder. Probá de nuevo en un rato.";
-    if (msg === "GEMINI_BAD_RESPONSE") return "Gemini devolvió una respuesta rara. Probá de nuevo en un rato.";
-    if (/quota exceeded|rate limit/i.test(msg)) return "Se agotó el uso gratuito de IA por ahora. Probá de nuevo más tarde.";
-    return "No se pudo generar el resumen (" + msg + ").";
-  }
-
-  // Convierte el texto (con formato Markdown simple que devuelve Gemini) a HTML
-  // seguro: escapa todo primero y solo después arma títulos, negrita, viñetas, etc.
-  function renderMarkdownish(text){
-    var lines = escapeHtml(text).split("\n");
-    var html = "";
-    var inList = false;
-    function closeList(){ if (inList){ html += "</ul>"; inList = false; } }
-    lines.forEach(function(line){
-      var l = line.trim();
-      if (l === "" ) { closeList(); return; }
-      if (/^(---|\*\*\*)$/.test(l)) { closeList(); html += "<hr>"; return; }
-      var h;
-      if ((h = l.match(/^####\s+(.*)/))) { closeList(); html += "<h4>" + inlineMd(h[1]) + "</h4>"; return; }
-      if ((h = l.match(/^###\s+(.*)/))) { closeList(); html += "<h4>" + inlineMd(h[1]) + "</h4>"; return; }
-      if ((h = l.match(/^##\s+(.*)/))) { closeList(); html += "<h3>" + inlineMd(h[1]) + "</h3>"; return; }
-      if ((h = l.match(/^#\s+(.*)/))) { closeList(); html += "<h2>" + inlineMd(h[1]) + "</h2>"; return; }
-      if ((h = l.match(/^[*\-]\s+(.*)/))) {
-        if (!inList){ html += "<ul>"; inList = true; }
-        html += "<li>" + inlineMd(h[1]) + "</li>";
-        return;
-      }
-      closeList();
-      html += "<p>" + inlineMd(l) + "</p>";
-    });
-    closeList();
-    return html;
-  }
-  function inlineMd(s){
-    return s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  }
-
-  // Arma una versión limpia (blanco y negro) del resumen dentro de #printArea y
-  // abre el diálogo de impresión del navegador — desde ahí se puede imprimir en
-  // papel o elegir "Guardar como PDF" sin necesitar ninguna librería aparte.
-  function printSummary(title, bodyHtml){
-    var area = document.getElementById("printArea");
-    var fecha = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
-    area.innerHTML =
-      '<h1>' + escapeHtml(title) + '</h1>' +
-      '<div class="print-meta">Enfermería Roxy · resumen generado con IA · ' + fecha + '</div>' +
-      bodyHtml;
-    window.print();
   }
 
   function friendlyDeleteError(err){
@@ -545,7 +438,7 @@
     bar.innerHTML =
       '<span class="count">' + ids.length + (ids.length === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
       '<input type="text" id="multiTopic" placeholder="Tema a buscar' + (ids.length > 1 ? ' en estos archivos' : '') + ' — ej: huesos de la mano">' +
-      '<button type="button" id="multiSummarizeBtn">Resumir seleccionado' + (ids.length > 1 ? 's' : '') + ' ✨</button>' +
+      '<button type="button" id="multiSummarizeBtn">Armar prompt para ChatGPT ✨</button>' +
       '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>';
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
@@ -554,11 +447,7 @@
     document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
       var topic = document.getElementById("multiTopic").value.trim();
       var chosen = lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      if (chosen.length >= 2){
-        showChatGptPrompt(chosen, topic);
-      } else {
-        summarizeMultiple(chosen, topic);
-      }
+      showChatGptPrompt(chosen, topic, els.preview);
     });
   }
 
@@ -569,12 +458,17 @@
   function buildChatGptPrompt(chosen, topic){
     var names = chosen.map(function(f){ return f.name; });
     var cleanTopic = (topic || "").trim();
+    var multi = chosen.length > 1;
     var lista = names.map(function(n){ return "- " + n; }).join("\n");
     var intro = "Sos un asistente que ayuda a una estudiante de la carrera de Licenciatura en Enfermería a repasar antes de un examen.\n\n" +
-      "Te voy a adjuntar estos apuntes (subilos antes de responder si todavía no los ves):\n" + lista + "\n\n";
+      "Te voy a adjuntar " + (multi ? "estos apuntes" : "este apunte") + " (subilo" + (multi ? "s" : "") + " antes de responder si todavía no lo" + (multi ? "s" : "") + " ves):\n" + lista + "\n\n";
     var tarea = cleanTopic
-      ? "Buscá en TODOS los archivos adjuntos la información sobre \"" + cleanTopic + "\" y armá UN solo resumen combinado, en español, organizado con subtítulos o viñetas, indicando de qué archivo sale cada parte si hay aportes de más de uno. No inventes información que no esté en los archivos. Si ninguno tiene información sobre \"" + cleanTopic + "\", decilo claramente en vez de inventar un resumen."
-      : "Armá UN solo resumen combinado de todos los archivos adjuntos, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en los archivos.";
+      ? (multi
+        ? "Buscá en TODOS los archivos adjuntos la información sobre \"" + cleanTopic + "\" y armá UN solo resumen combinado, en español, organizado con subtítulos o viñetas, indicando de qué archivo sale cada parte si hay aportes de más de uno. No inventes información que no esté en los archivos. Si ninguno tiene información sobre \"" + cleanTopic + "\", decilo claramente en vez de inventar un resumen."
+        : "Buscá específicamente la información sobre \"" + cleanTopic + "\" dentro del archivo adjunto y resumí SOLO esa parte, en español, organizada con subtítulos o viñetas, para repasar antes de un examen. No inventes información que no esté en el archivo. Si el archivo no tiene nada sobre \"" + cleanTopic + "\", decilo claramente en vez de inventar un resumen.")
+      : (multi
+        ? "Armá UN solo resumen combinado de todos los archivos adjuntos, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en los archivos."
+        : "Resumí el archivo adjunto, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en el archivo.");
     return intro + tarea;
   }
 
@@ -599,17 +493,19 @@
     return Promise.resolve(fallbackCopy(text));
   }
 
-  function showChatGptPrompt(chosen, topic){
+  function showChatGptPrompt(chosen, topic, targetEl){
+    var target = targetEl || els.preview;
     var names = chosen.map(function(f){ return f.name; });
-    var titleLabel = "Prompt para ChatGPT (" + chosen.length + " archivos)";
+    var titleLabel = chosen.length > 1 ? "Prompt para ChatGPT (" + chosen.length + " archivos)" : "Prompt para ChatGPT";
+    var pasoUno = chosen.length > 1 ? "1) Subí cada archivo a ChatGPT" : "1) Subí el archivo a ChatGPT";
     var prompt = buildChatGptPrompt(chosen, topic);
     var linksHtml = chosen.map(function(f){
       return '<li style="margin:4px 0;"><a href="' + escapeHtml(f.webViewLink || "#") + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a></li>';
     }).join("");
-    els.preview.innerHTML =
+    target.innerHTML =
       '<div class="preview-title">' + titleLabel + '</div>' +
       '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
-      '<div class="banner info" style="margin-top:10px;">1) Abrí cada archivo y subilo a ChatGPT &nbsp; 2) Copiá el prompt &nbsp; 3) Pegalo en el chat</div>' +
+      '<div class="banner info" style="margin-top:10px;">' + pasoUno + ' &nbsp; 2) Copiá el prompt &nbsp; 3) Pegalo en el chat</div>' +
       '<ul style="padding-left:18px;margin:10px 0;">' + linksHtml + '</ul>' +
       '<textarea id="chatgptPromptBox" readonly rows="10" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px;border-radius:9px;border:1px solid var(--line);">' + escapeHtml(prompt) + '</textarea>' +
       '<div class="summarize-row" style="margin-top:8px;">' +
@@ -617,59 +513,16 @@
         '<button type="button" class="ghost" id="openChatGptBtn">Abrir ChatGPT ↗</button>' +
       '</div>' +
       '<div id="copyPromptMsg" class="muted" style="margin-top:6px;font-size:13px;"></div>';
-    document.getElementById("copyPromptBtn").addEventListener("click", function(){
+    target.querySelector("#copyPromptBtn").addEventListener("click", function(){
       copyToClipboard(prompt).then(function(ok){
-        document.getElementById("copyPromptMsg").textContent = ok
+        target.querySelector("#copyPromptMsg").textContent = ok
           ? "Prompt copiado ✓ — ahora pegalo en ChatGPT."
           : "No se pudo copiar automáticamente — seleccioná el texto de arriba y copiá manualmente (Ctrl+C).";
       });
     });
-    document.getElementById("openChatGptBtn").addEventListener("click", function(){
+    target.querySelector("#openChatGptBtn").addEventListener("click", function(){
       window.open("https://chatgpt.com/", "_blank", "noopener");
     });
-  }
-
-  function summarizeMultiple(chosen, topic){
-    var btn = document.getElementById("multiSummarizeBtn");
-    var btnLabel = "Resumir seleccionado" + (chosen.length > 1 ? "s" : "") + " ✨";
-    var controller = new AbortController();
-    btn.disabled = true;
-    btn.textContent = "Resumiendo…";
-    var names = chosen.map(function(f){ return f.name; });
-    var titleLabel = chosen.length > 1 ? "Resumen combinado (" + chosen.length + " archivos)" : "Resumen";
-    els.preview.innerHTML =
-      '<div class="preview-title">' + titleLabel + '</div>' +
-      '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
-      '<div class="summary-box"><span class="spin"></span>&nbsp; Generando resumen con IA (puede tardar hasta un minuto)… ' +
-      '<button type="button" class="small ghost" id="cancelMultiSummarizeBtn">Cancelar</button></div>';
-    document.getElementById("cancelMultiSummarizeBtn").addEventListener("click", function(){ controller.abort(); });
-    callDrive({
-      action: "summarize",
-      topic: topic,
-      files: chosen.map(function(f){ return { fileId: f.id, mimeType: f.mimeType, fileName: f.name }; })
-    }, controller.signal)
-      .then(function(res){
-        btn.disabled = false;
-        btn.textContent = btnLabel;
-        var summaryHtml = renderMarkdownish(res.summary);
-        els.preview.innerHTML =
-          '<div class="preview-title">' + titleLabel + '</div>' +
-          '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
-          '<div class="summary-box">' + summaryHtml + '</div>' +
-          '<button type="button" class="ghost print-btn" id="printSummaryBtn">Imprimir / Guardar como PDF 🖨</button>';
-        document.getElementById("printSummaryBtn").addEventListener("click", function(){
-          printSummary(titleLabel + " — " + names.join(", "), summaryHtml);
-        });
-      })
-      .catch(function(err){
-        btn.disabled = false;
-        btn.textContent = btnLabel;
-        if (err && err.name === "AbortError"){
-          els.preview.insertAdjacentHTML("beforeend", '<div class="banner info">Cancelado.</div>');
-          return;
-        }
-        els.preview.insertAdjacentHTML("beforeend", '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlySummarizeError(err)) + '</div>');
-      });
   }
 
   function renderResults(files){
