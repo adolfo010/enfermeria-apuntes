@@ -497,15 +497,19 @@
     var target = targetEl || els.preview;
     var names = chosen.map(function(f){ return f.name; });
     var titleLabel = chosen.length > 1 ? "Prompt para ChatGPT (" + chosen.length + " archivos)" : "Prompt para ChatGPT";
-    var pasoUno = chosen.length > 1 ? "1) Subí cada archivo a ChatGPT" : "1) Subí el archivo a ChatGPT";
+    var pasoUno = chosen.length > 1 ? "1) Descargá cada archivo (no sirve el link de Drive, ChatGPT no puede abrirlo)" : "1) Descargá el archivo (no sirve el link de Drive, ChatGPT no puede abrirlo)";
     var prompt = buildChatGptPrompt(chosen, topic);
     var linksHtml = chosen.map(function(f){
-      return '<li style="margin:4px 0;"><a href="' + escapeHtml(f.webViewLink || "#") + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a></li>';
+      var downloadUrl = "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(f.id);
+      var openUrl = f.webViewLink || ("https://drive.google.com/file/d/" + f.id + "/view");
+      return '<li style="margin:6px 0;">' + escapeHtml(f.name) +
+        ' — <a href="' + downloadUrl + '">Descargar ⬇</a>' +
+        ' · <a href="' + escapeHtml(openUrl) + '" target="_blank" rel="noopener">Abrir en Drive ↗</a></li>';
     }).join("");
     target.innerHTML =
       '<div class="preview-title">' + titleLabel + '</div>' +
       '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
-      '<div class="banner info" style="margin-top:10px;">' + pasoUno + ' &nbsp; 2) Copiá el prompt &nbsp; 3) Pegalo en el chat</div>' +
+      '<div class="banner info" style="margin-top:10px;">' + pasoUno + ' &nbsp; 2) Subilo a ChatGPT (arrastralo o clic en el clip 📎) &nbsp; 3) Copiá el prompt y pegalo en el chat</div>' +
       '<ul style="padding-left:18px;margin:10px 0;">' + linksHtml + '</ul>' +
       '<textarea id="chatgptPromptBox" readonly rows="10" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px;border-radius:9px;border:1px solid var(--line);">' + escapeHtml(prompt) + '</textarea>' +
       '<div class="summarize-row" style="margin-top:8px;">' +
