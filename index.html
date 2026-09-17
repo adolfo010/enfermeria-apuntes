@@ -554,7 +554,78 @@
     document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
       var topic = document.getElementById("multiTopic").value.trim();
       var chosen = lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      summarizeMultiple(chosen, topic);
+      if (chosen.length >= 2){
+        showChatGptPrompt(chosen, topic);
+      } else {
+        summarizeMultiple(chosen, topic);
+      }
+    });
+  }
+
+  // Con 2+ archivos, en vez de gastar cuota de Gemini armamos un prompt detallado
+  // para que la estudiante lo pegue directamente en su cuenta gratis de ChatGPT
+  // (junto con los archivos, que sube ella misma) — no hay forma de automatizar
+  // eso sin una API paga de OpenAI.
+  function buildChatGptPrompt(chosen, topic){
+    var names = chosen.map(function(f){ return f.name; });
+    var cleanTopic = (topic || "").trim();
+    var lista = names.map(function(n){ return "- " + n; }).join("\n");
+    var intro = "Sos un asistente que ayuda a una estudiante de la carrera de Licenciatura en Enfermería a repasar antes de un examen.\n\n" +
+      "Te voy a adjuntar estos apuntes (subilos antes de responder si todavía no los ves):\n" + lista + "\n\n";
+    var tarea = cleanTopic
+      ? "Buscá en TODOS los archivos adjuntos la información sobre \"" + cleanTopic + "\" y armá UN solo resumen combinado, en español, organizado con subtítulos o viñetas, indicando de qué archivo sale cada parte si hay aportes de más de uno. No inventes información que no esté en los archivos. Si ninguno tiene información sobre \"" + cleanTopic + "\", decilo claramente en vez de inventar un resumen."
+      : "Armá UN solo resumen combinado de todos los archivos adjuntos, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en los archivos.";
+    return intro + tarea;
+  }
+
+  function fallbackCopy(text){
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (_e) { return false; }
+  }
+
+  function copyToClipboard(text){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(text).then(function(){ return true; }).catch(function(){ return fallbackCopy(text); });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+
+  function showChatGptPrompt(chosen, topic){
+    var names = chosen.map(function(f){ return f.name; });
+    var titleLabel = "Prompt para ChatGPT (" + chosen.length + " archivos)";
+    var prompt = buildChatGptPrompt(chosen, topic);
+    var linksHtml = chosen.map(function(f){
+      return '<li style="margin:4px 0;"><a href="' + escapeHtml(f.webViewLink || "#") + '" target="_blank" rel="noopener">' + escapeHtml(f.name) + '</a></li>';
+    }).join("");
+    els.preview.innerHTML =
+      '<div class="preview-title">' + titleLabel + '</div>' +
+      '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
+      '<div class="banner info" style="margin-top:10px;">1) Abrí cada archivo y subilo a ChatGPT &nbsp; 2) Copiá el prompt &nbsp; 3) Pegalo en el chat</div>' +
+      '<ul style="padding-left:18px;margin:10px 0;">' + linksHtml + '</ul>' +
+      '<textarea id="chatgptPromptBox" readonly rows="10" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px;border-radius:9px;border:1px solid var(--line);">' + escapeHtml(prompt) + '</textarea>' +
+      '<div class="summarize-row" style="margin-top:8px;">' +
+        '<button type="button" id="copyPromptBtn">Copiar prompt 📋</button>' +
+        '<button type="button" class="ghost" id="openChatGptBtn">Abrir ChatGPT ↗</button>' +
+      '</div>' +
+      '<div id="copyPromptMsg" class="muted" style="margin-top:6px;font-size:13px;"></div>';
+    document.getElementById("copyPromptBtn").addEventListener("click", function(){
+      copyToClipboard(prompt).then(function(ok){
+        document.getElementById("copyPromptMsg").textContent = ok
+          ? "Prompt copiado ✓ — ahora pegalo en ChatGPT."
+          : "No se pudo copiar automáticamente — seleccioná el texto de arriba y copiá manualmente (Ctrl+C).";
+      });
+    });
+    document.getElementById("openChatGptBtn").addEventListener("click", function(){
+      window.open("https://chatgpt.com/", "_blank", "noopener");
     });
   }
 
