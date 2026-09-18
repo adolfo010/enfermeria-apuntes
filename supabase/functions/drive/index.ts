@@ -966,8 +966,17 @@ REGLAS DE CALIDAD:
 - No infieras secuencias, mecanismos, causas o relaciones que el material no explique explícitamente. Una respuesta debe poder justificarse directamente con la fuente.
 - Si el tema seleccionado tiene subtemas, cubrí esos subtemas sin salir del árbol temático seleccionado.
 - La respuesta correcta y la explicación deben estar respaldadas por el material enviado.
+- coverageKey debe ser específico para distinguir objetivos diferentes; no uses una clave genérica como "neurona" para todas las preguntas.
 Devolvé ÚNICAMENTE un JSON válido con esta estructura:
-{"questions":[{"number":1,"type":"...","question":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}
+{"questions":[{"number":1,"type":"...","coverageKey":"...","question":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}
+
+COBERTURA OBLIGATORIA:
+- Antes de redactar las preguntas, identificá objetivos de evaluación realmente distintos dentro del contenido disponible.
+- Cada pregunta debe tener un coverageKey breve que identifique el concepto/objetivo concreto que evalúa.
+- No uses el mismo coverageKey para dos preguntas salvo que no exista contenido suficiente para evitarlo.
+- Dos preguntas cuentan como repetidas aunque estén redactadas de forma diferente si evalúan esencialmente el mismo concepto, estructura, función, relación o dato.
+- No uses coverageKey diferentes para disfrazar preguntas que evalúan la misma idea.
+- Distribuí los coverageKey entre los distintos subtemas, estructuras, características, funciones y relaciones presentes en la fuente.
 Para preguntas que no sean de opción múltiple, options debe ser [].
 Si se solicitan respuestas, completá correctAnswer y explanation. Si no se solicitan, dejalos como "".
 ${answers ? "Incluí respuesta correcta y una explicación breve basada en el material." : "No incluyas respuestas ni explicaciones."}`;
@@ -1062,6 +1071,62 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
           questions = JSON.parse(cleaned);
         }
         if(!questions?.questions || !Array.isArray(questions.questions)) throw new Error("La IA devolvió un formato de preguntas no válido.");
+
+        // Control de diversidad: si la IA repite objetivos, se ejecuta una única reparación.
+        const normalizeCoverage = (s: any) => normalizeForTopic(String(s || ""));
+        const coverageCounts = new Map<string, number>();
+        for (const q of questions.questions) {
+          const key = normalizeCoverage(q?.coverageKey);
+          if (key) coverageCounts.set(key, (coverageCounts.get(key) || 0) + 1);
+        }
+        const duplicateCoverage = Array.from(coverageCounts.entries()).filter(([, n]) => n > 1);
+
+        if (duplicateCoverage.length > 0) {
+          const duplicateKeys = duplicateCoverage.map(([k]) => k).join(", ");
+          const repairPrompt = `REPARÁ ESTE EXAMEN PARA ELIMINAR REPETICIONES CONCEPTUALES.
+
+Tema: ${cleanTopic || "material completo"}
+Cantidad exacta: ${count}
+Tipo solicitado: ${type}
+Dificultad: ${difficultyText}
+
+El examen generado contiene coverageKey repetidos: ${duplicateKeys}. Conservá las preguntas que evalúan objetivos claramente distintos y reemplazá las repetidas por preguntas nuevas basadas EXCLUSIVAMENTE en los archivos adjuntos.
+
+REGLAS DE REPARACIÓN:
+- Cada pregunta debe evaluar un objetivo concreto diferente.
+- No reemplaces una pregunta repetida simplemente cambiando su redacción: cambiá el concepto evaluado.
+- Distribuí las preguntas entre distintos subtemas, estructuras, características, funciones y relaciones disponibles.
+- Una misma cadena conceptual no debe ocupar varias preguntas salvo que exista una relación adicional claramente diferente.
+- No inventes contenido ni salgas del tema seleccionado.
+- Cada coverageKey debe ser específico y distinto cuando exista contenido suficiente.
+- Mantené el tipo de pregunta solicitado y la dificultad indicada.
+- Si el tipo es Mixto, combiná formatos cuando el material permita hacerlo.
+
+EXAMEN ACTUAL:
+${JSON.stringify(questions.questions)}
+
+Devolvé ÚNICAMENTE un JSON válido con esta estructura:
+{"questions":[{"number":1,"type":"...","coverageKey":"...","question":"...","options":[],"correctAnswer":"...","explanation":"..."}]}`;
+
+          const repairParts = [...contentParts];
+          repairParts[repairParts.length - 1] = { type:"input_text", text: repairPrompt };
+          await assertAiBudget();
+          const repairRes = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+            method:"POST",
+            headers:{ Authorization:`Bearer ${OPENAI_API_KEY}`, "Content-Type":"application/json" },
+            body:JSON.stringify({ model:OPENAI_MODEL, input:[{role:"user",content:repairParts}], max_output_tokens:7000 }),
+          }, OPENAI_TIMEOUT_MS);
+          const repairJson = await repairRes.json();
+          await recordOpenAIUsage(repairJson, { user, action: "generateQuestions", stage: "repair", topic: cleanTopic, files: filesInput });
+          if (repairRes.ok) {
+            const repairRaw = (repairJson.output || []).flatMap((o:any)=>o.content||[]).map((p:any)=>p.text||"").join("").trim();
+            try {
+              const repaired = JSON.parse(repairRaw.replace(/^\`\`\`json\s*/i,"").replace(/\s*\`\`\`$/,""));
+              if (repaired?.questions && Array.isArray(repaired.questions)) questions = repaired;
+            } catch (_e) {}
+          }
+        }
+
         return cors(new Response(JSON.stringify({ok:true, questions:questions.questions}),{headers:{"Content-Type":"application/json"}}));
       } finally {
         for (const id of fileIds) {
