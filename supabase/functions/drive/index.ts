@@ -1142,7 +1142,6 @@ Devolvé ÚNICAMENTE JSON válido:
         const plannedObjectives = coveragePlan.objectives.map((o:any, i:number) =>
           `${i + 1}. [${o?.category || "otro"}] objetivo: ${o?.objective || ""} | centralFact: ${o?.centralFact || ""} | perspectiva: ${o?.perspectiveKey || ""} | bloque: ${o?.cluster || ""} | evidencia: ${o?.sourceBasis || ""}`
         )mport "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { PDFDocument } from "npm:pdf-lib@1.17.1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
