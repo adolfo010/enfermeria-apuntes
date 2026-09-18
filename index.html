@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Enfermería Roxy</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.svg">
@@ -134,12 +135,25 @@
 </style>
 </head>
 <body>
-<div class="shell">
+<div id="authScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);">
+  <div class="connect-card" style="width:min(420px,100%);">
+    <div style="font-weight:700;font-size:20px;">Enfermería Roxy</div>
+    <div style="color:var(--muted);font-size:14px;">Ingresá con tu cuenta autorizada.</div>
+    <form id="loginForm" style="width:100%;display:flex;flex-direction:column;gap:10px;">
+      <input id="loginEmail" type="email" autocomplete="username" placeholder="Correo electrónico" required style="font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);">
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña" required style="font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);">
+      <button type="submit" id="loginBtn">Ingresar</button>
+      <div id="loginMsg" class="banner danger" style="display:none;"></div>
+    </form>
+  </div>
+</div>
+<div class="shell" id="appShell" style="display:none;">
 
   <header class="top">
     <div class="brand">
       <h1>Enfermería Roxy</h1>
       <span class="tag">Lic. en Enfermería · Plan 2017</span>
+      <div id="userBar" style="display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;"></div>
     </div>
     <form class="searchbar" id="searchForm">
       <input id="searchInput" type="text" placeholder="Buscar por título, materia o contenido…" autocomplete="off">
@@ -309,7 +323,7 @@
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + ANON_KEY,
+        "Authorization": "Bearer " + (window.__supabaseSession ? window.__supabaseSession.access_token : ANON_KEY),
         "apikey": ANON_KEY
       },
       body: JSON.stringify(payload),
@@ -678,7 +692,7 @@
       var xhr = new XMLHttpRequest();
       xhr.open("POST", SUPABASE_URL + "/functions/v1/drive");
       xhr.setRequestHeader("Content-Type", "application/json");
-      xhr.setRequestHeader("Authorization", "Bearer " + ANON_KEY);
+      xhr.setRequestHeader("Authorization", "Bearer " + (window.__supabaseSession ? window.__supabaseSession.access_token : ANON_KEY));
       xhr.setRequestHeader("apikey", ANON_KEY);
       if (xhr.upload && onProgress){
         xhr.upload.onprogress = function(e){
@@ -886,24 +900,117 @@
     if (!wasOpen) checkFacultad();
   });
 
-  function boot(){
-    registerServiceWorker();
+  var supabaseClient = window.supabase.createClient(SUPABASE_URL, ANON_KEY);
+  window.__supabaseSession = null;
+  var currentUserRole = "USER";
+  var __appStarted = false;
+
+  function showLogin(message){
+    document.getElementById("authScreen").style.display = "flex";
+    document.getElementById("appShell").style.display = "none";
+    var msg = document.getElementById("loginMsg");
+    msg.textContent = message || "";
+    msg.style.display = message ? "block" : "none";
+  }
+
+  function applyRoleUI(role, email){
+    currentUserRole = role || "USER";
+    var admin = currentUserRole === "ADMIN";
+    els.uploadBtn.style.display = admin ? "inline-block" : "none";
+    els.inbox.style.display = admin ? "" : "none";
+    els.catalogBtn.style.display = admin ? "inline-block" : "none";
+    document.getElementById("userBar").innerHTML =
+      '<span class="pill ' + (admin ? 'good' : 'muted') + '">' +
+      escapeHtml(email || "") + ' · ' + escapeHtml(currentUserRole) +
+      '</span><button type="button" class="small ghost" id="logoutBtn">Salir</button>';
+    document.getElementById("logoutBtn").addEventListener("click", function(){
+      supabaseClient.auth.signOut();
+    });
+  }
+
+  async function startAuthenticatedApp(session){
+    if (!session || !session.access_token){ showLogin(); return; }
+    window.__supabaseSession = session;
+    var user = session.user;
+
+    var profileRes = await fetch(
+      SUPABASE_URL + "/rest/v1/profiles?id=eq." + encodeURIComponent(user.id) + "&select=role",
+      {headers:{apikey:ANON_KEY,Authorization:"Bearer " + session.access_token}}
+    );
+    if (!profileRes.ok) throw new Error("No se pudo verificar el perfil");
+    var profiles = await profileRes.json();
+    applyRoleUI(profiles[0] && profiles[0].role || "USER", user.email);
+
+    document.getElementById("authScreen").style.display = "none";
+    document.getElementById("appShell").style.display = "flex";
+
+    if (!__appStarted){
+      __appStarted = true;
+      registerServiceWorker();
+    }
+
     var params = new URLSearchParams(location.search);
     var wasShare = params.get("share") === "1";
-    if (params.get("auth") === "ok" || params.get("auth") === "error" || wasShare){
-      history.replaceState({}, "", location.pathname);
+    if (params.get("auth") || wasShare) history.replaceState({}, "", location.pathname);
+
+    try {
+      var oauthRes = await fetch(
+        SUPABASE_URL + "/functions/v1/oauth/status",
+        {headers:{apikey:ANON_KEY,Authorization:"Bearer " + session.access_token}}
+      );
+      var oauthJson = await oauthRes.json();
+      renderConnect(!!oauthJson.connected);
+      if (oauthJson.connected && currentUserRole === "ADMIN"){
+        els.inbox.classList.add("open");
+        if (wasShare) handleSharedFiles(); else checkFacultad();
+      }
+    } catch (_e) {
+      renderConnect(false);
     }
-    fetch(SUPABASE_URL + "/functions/v1/oauth/status")
-      .then(function(res){ return res.json(); })
-      .then(function(json){
-        renderConnect(!!json.connected);
-        if (json.connected){
-          els.inbox.classList.add("open");
-          if (wasShare){ handleSharedFiles(); }
-          else { checkFacultad(); }
-        }
-      })
-      .catch(function(){ renderConnect(false); });
+  }
+
+  document.getElementById("loginForm").addEventListener("submit", async function(e){
+    e.preventDefault();
+    var btn=document.getElementById("loginBtn"), msg=document.getElementById("loginMsg");
+    btn.disabled=true; btn.textContent="Ingresando…"; msg.style.display="none";
+    var result=await supabaseClient.auth.signInWithPassword({
+      email:document.getElementById("loginEmail").value.trim(),
+      password:document.getElementById("loginPassword").value
+    });
+    btn.disabled=false; btn.textContent="Ingresar";
+    if(result.error){
+      msg.textContent="Correo o contraseña incorrectos.";
+      msg.style.display="block";
+    }
+  });
+
+  supabaseClient.auth.onAuthStateChange(function(event, session){
+    if(event === "SIGNED_OUT"){
+      window.__supabaseSession=null;
+      __appStarted=false;
+      showLogin();
+      return;
+    }
+    if(session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")){
+      startAuthenticatedApp(session).catch(function(){
+        showLogin("No se pudo iniciar la sesión.");
+      });
+    }
+    if(session && event === "TOKEN_REFRESHED"){
+      window.__supabaseSession=session;
+    }
+  });
+
+  function boot(){
+    supabaseClient.auth.getSession().then(function(result){
+      if(result.data && result.data.session){
+        startAuthenticatedApp(result.data.session).catch(function(){
+          showLogin("No se pudo iniciar la sesión.");
+        });
+      } else {
+        showLogin();
+      }
+    });
   }
   boot();
 })();
