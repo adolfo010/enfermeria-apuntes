@@ -648,12 +648,12 @@
       setTimeout(function(){
         var input=document.getElementById("summarizeTopic");
         if(input)input.value=topic.title||"";
-        var box=document.getElementById("examResult");
-        generateQuestions([file],topic.title||"",box,
-          Number(document.getElementById("examCount").value),
-          document.getElementById("examType").value,
-          Number(document.getElementById("examDifficulty").value),
-          document.getElementById("examAnswers").checked);
+        var examBtn=document.getElementById("examBtn");
+        var controls=document.getElementById("examControls");
+        if(examBtn && controls) {
+          controls.style.display="grid";
+          controls.scrollIntoView({behavior:"smooth",block:"center"});
+        }
       },0);
     });
     var start=content.querySelector("#indexStartBtn");
