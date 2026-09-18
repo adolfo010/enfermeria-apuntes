@@ -953,13 +953,37 @@ ${cleanTopic ? `Tema específico: "${cleanTopic}". Las preguntas deben centrarse
 No inventes datos, conceptos, tratamientos, valores ni definiciones que no aparezcan en los archivos.
 
 MODO DE PLANIFICACIÓN OBLIGATORIO:
-Antes de redactar las preguntas, construí primero un PLAN DE COBERTURA amplio. Identificá objetivos de evaluación genuinamente distintos que estén desarrollados en la fuente.
-Primero buscá al menos ${Math.max(count * 2, 10)} objetivos candidatos cuando el contenido lo permita. Después agrupá los que pertenezcan al mismo bloque conceptual o cadena causal/funcional y seleccioná los objetivos más independientes.
-Debés seleccionar EXACTAMENTE ${count} objetivos si la fuente contiene esa cantidad de objetivos defendibles. Solo devolvé menos si, tras revisar todo el contenido disponible, realmente no existen ${count} objetivos independientes.
-Priorizá, cuando estén disponibles, categorías diferentes: definición, estructura/componentes, características, función, clasificación, relación entre conceptos, mecanismo/proceso, identificación, consecuencias o aplicación.
-Una misma cadena conceptual no debe ocupar varias posiciones. Por ejemplo, "alta tasa metabólica", "no almacena nutrientes" y "necesita suministro constante" forman un bloque relacionado: elegí como máximo los objetivos más diferenciados de ese bloque y buscá otros contenidos desarrollados para completar.
-El agrupamiento sirve para evitar redundancias, no para descartar contenidos distintos. Explorá todos los subtemas, estructuras, funciones, características, relaciones y elementos gráficos desarrollados antes de concluir que no hay suficientes objetivos.
-No fabriques variedad ni uses conocimiento externo. Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
+Antes de redactar preguntas, construí un PLAN DE COBERTURA en dos fases.
+
+FASE 1 — DESCUBRIMIENTO:
+Identificá una bolsa amplia de objetivos realmente desarrollados en la fuente. Buscá al menos ${Math.max(count * 3, 15)} candidatos cuando el contenido lo permita. Para cada candidato determiná:
+- objetivo principal que podría evaluarse;
+- evidencia concreta de la fuente;
+- subtema;
+- categoría cognitiva;
+- bloque conceptual al que pertenece.
+
+FASE 2 — SELECCIÓN:
+Agrupá objetivos del mismo bloque conceptual y seleccioná EXACTAMENTE ${count} objetivos principales independientes cuando existan suficientes candidatos defendibles.
+Regla fundamental: UNA PREGUNTA = UN OBJETIVO PRINCIPAL.
+El objetivo puede tener contenido de apoyo, pero la respuesta no debe depender de dos objetivos independientes.
+
+No cuentes como objetivos independientes partes de una misma cadena. Por ejemplo, "alta tasa metabólica", "no almacena nutrientes" y "necesita suministro constante" pertenecen al mismo bloque metabólico. No ocupes tres posiciones con ellos.
+Sin embargo, no descartes contenidos distintos solo porque estén relacionados con el tema general. Explorá todo el material antes de concluir que faltan objetivos.
+
+PRIORIZACIÓN:
+- Distribuí las preguntas entre subtemas diferentes.
+- Combiná definición, estructura, características, función, clasificación, relación, proceso, identificación y aplicación cuando existan.
+- Priorizá objetivos distintos antes que repetir un bloque.
+- Para cada objetivo seleccionado indicá una evidencia concreta que permita verificar posteriormente que la pregunta no inventa información.
+- Si hay suficientes objetivos independientes, el plan DEBE contener ${count}.
+- Solo puede contener menos si realmente no existen ${count} objetivos independientes respaldados por la fuente.
+- No uses conocimiento externo.
+
+El plan debe tener esta estructura:
+{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
+
+No redactes preguntas en esta fase. Devolvé ÚNICAMENTE JSON válido.
 
 REGLAS:
 - No hagas dos preguntas que evalúen esencialmente el mismo concepto, estructura, función, relación o dato, aunque cambies la redacción.
