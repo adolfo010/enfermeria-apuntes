@@ -164,6 +164,23 @@
   .account-form input{font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);outline:none;}
   .account-form input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   .account-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;}
+  .ai-usage-modal{position:fixed;inset:0;background:rgba(26,20,23,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:1000;}
+  .ai-usage-modal.open{display:flex;}
+  .ai-usage-card{width:min(980px,100%);max-height:90vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px;}
+  .ai-usage-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .ai-usage-head h2{margin:0 0 4px;font-size:20px;}
+  .ai-usage-head p{margin:0;color:var(--muted);font-size:13.5px;}
+  .ai-usage-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0;}
+  .ai-usage-kpi{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);}
+  .ai-usage-kpi .label{font-size:12px;color:var(--muted);}
+  .ai-usage-kpi .value{font-family:var(--font-mono);font-size:18px;font-weight:600;margin-top:4px;}
+  .ai-usage-table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;}
+  .ai-usage-table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px;}
+  .ai-usage-table th,.ai-usage-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;}
+  .ai-usage-table th{background:var(--surface-2);color:var(--muted);font-size:12px;}
+  .ai-usage-table tr:last-child td{border-bottom:none;}
+  .ai-usage-note{margin-top:12px;color:var(--muted);font-size:12.5px;line-height:1.45;}
+  @media (max-width:700px){.ai-usage-grid{grid-template-columns:1fr 1fr;}}
 </style>
 </head>
 <body>
@@ -209,6 +226,21 @@
         <button type="submit" id="changePasswordBtn">Cambiar contraseña</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="ai-usage-modal" id="aiUsageModal" aria-hidden="true">
+  <div class="ai-usage-card" role="dialog" aria-modal="true" aria-labelledby="aiUsageTitle">
+    <div class="ai-usage-head">
+      <div>
+        <h2 id="aiUsageTitle">Consumo de IA</h2>
+        <p id="aiUsageSubtitle">Uso registrado por Enfermería Roxy.</p>
+      </div>
+      <button type="button" class="small ghost" id="closeAiUsageBtn">Cerrar</button>
+    </div>
+    <div id="aiUsageContent">
+      <div class="banner info" style="margin-top:16px;"><span class="spin"></span>&nbsp; Consultando consumo…</div>
+    </div>
   </div>
 </div>
 
@@ -272,7 +304,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.16";
+  var APP_VERSION = "0.4.17";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1326,7 +1358,12 @@
     document.getElementById("userBar").innerHTML =
       '<span class="pill ' + (admin ? 'good' : 'muted') + '">' +
       escapeHtml(email || "") + ' · ' + escapeHtml(currentUserRole) +
-      '</span><button type="button" class="small ghost" id="accountBtn">Mi cuenta</button><button type="button" class="small ghost" id="logoutBtn">Salir</button>';
+      '</span>' +
+      (admin ? '<button type="button" class="small ghost" id="aiUsageBtn">Consumo IA</button>' : '') +
+      '<button type="button" class="small ghost" id="accountBtn">Mi cuenta</button><button type="button" class="small ghost" id="logoutBtn">Salir</button>';
+    if (admin) {
+      document.getElementById("aiUsageBtn").addEventListener("click", openAiUsageModal);
+    }
     document.getElementById("accountBtn").addEventListener("click", function(){
       openAccountModal(email);
     });
@@ -1334,6 +1371,49 @@
       supabaseClient.auth.signOut();
     });
   }
+
+  function formatUsageNumber(n){ return Number(n || 0).toLocaleString("es-AR"); }
+  function formatUsageUsd(n){ return "USD " + Number(n || 0).toFixed(6); }
+
+  function renderAiUsage(payload){
+    var month = payload.currentMonth || {}, all = payload.allTime || {}, actions = payload.byAction || {}, rows = payload.rows || [];
+    var labels = { summarize:"Resúmenes", generateQuestions:"Preguntas de examen" };
+    var actionRows = Object.keys(actions).map(function(key){
+      var x=actions[key]||{};
+      return '<tr><td>'+escapeHtml(labels[key]||key)+'</td><td>'+formatUsageNumber(x.requests)+'</td><td>'+formatUsageNumber(x.inputTokens)+'</td><td>'+formatUsageNumber(x.outputTokens)+'</td><td>'+formatUsageUsd(x.estimatedCostUsd)+'</td></tr>';
+    }).join("");
+    var detailRows = rows.slice(0,50).map(function(r){
+      return '<tr><td>'+escapeHtml(new Date(r.created_at).toLocaleString("es-AR"))+'</td><td>'+escapeHtml(labels[r.action]||r.action||"")+'</td><td>'+escapeHtml(r.stage||"")+'</td><td>'+escapeHtml(r.topic||"—")+'</td><td>'+formatUsageNumber(r.input_tokens)+'</td><td>'+formatUsageNumber(r.output_tokens)+'</td><td>'+formatUsageUsd(r.estimated_cost_usd)+'</td></tr>';
+    }).join("");
+    var pricing=payload.pricing||{};
+    document.getElementById("aiUsageContent").innerHTML =
+      '<div class="ai-usage-grid">'+
+      '<div class="ai-usage-kpi"><div class="label">Este mes</div><div class="value">'+formatUsageUsd(month.estimatedCostUsd)+'</div></div>'+
+      '<div class="ai-usage-kpi"><div class="label">Solicitudes este mes</div><div class="value">'+formatUsageNumber(month.requests)+'</div></div>'+
+      '<div class="ai-usage-kpi"><div class="label">Tokens este mes</div><div class="value">'+formatUsageNumber(month.totalTokens)+'</div></div>'+
+      '<div class="ai-usage-kpi"><div class="label">Acumulado registrado</div><div class="value">'+formatUsageUsd(all.estimatedCostUsd)+'</div></div></div>'+
+      '<div class="banner info">Modelo: <strong>'+escapeHtml(pricing.model||"—")+'</strong>. Precios usados: entrada USD '+Number(pricing.inputPerMillion||0).toFixed(2)+'/M, caché USD '+Number(pricing.cachedInputPerMillion||0).toFixed(2)+'/M, salida USD '+Number(pricing.outputPerMillion||0).toFixed(2)+'/M.</div>'+
+      '<h3 style="font-size:15px;margin:18px 0 8px;">Este mes por operación</h3>'+
+      '<div class="ai-usage-table-wrap"><table class="ai-usage-table"><thead><tr><th>Operación</th><th>Solicitudes</th><th>Entrada</th><th>Salida</th><th>Costo estimado</th></tr></thead><tbody>'+(actionRows||'<tr><td colspan="5">Todavía no hay consumo registrado.</td></tr>')+'</tbody></table></div>'+
+      '<h3 style="font-size:15px;margin:18px 0 8px;">Últimas operaciones</h3>'+
+      '<div class="ai-usage-table-wrap"><table class="ai-usage-table"><thead><tr><th>Fecha</th><th>Operación</th><th>Etapa</th><th>Tema</th><th>Entrada</th><th>Salida</th><th>Costo</th></tr></thead><tbody>'+(detailRows||'<tr><td colspan="7">Sin operaciones registradas.</td></tr>')+'</tbody></table></div>'+
+      '<div class="ai-usage-note">El costo es una estimación basada en el uso devuelto por la API y los precios del modelo. El Usage Dashboard de OpenAI es la referencia para la facturación real. El registro de esta aplicación comienza con esta versión; el consumo anterior no se reconstruye desde Supabase.</div>';
+  }
+
+  function openAiUsageModal(){
+    var modal=document.getElementById("aiUsageModal");
+    modal.classList.add("open"); modal.setAttribute("aria-hidden","false");
+    document.getElementById("aiUsageContent").innerHTML='<div class="banner info" style="margin-top:16px;"><span class="spin"></span>&nbsp; Consultando consumo…</div>';
+    callDrive({action:"aiUsage"}).then(renderAiUsage).catch(function(err){
+      document.getElementById("aiUsageContent").innerHTML='<div class="banner danger" style="margin-top:16px;">No se pudo consultar el consumo ('+escapeHtml(err.message||"error")+').</div>';
+    });
+  }
+  function closeAiUsageModal(){
+    var modal=document.getElementById("aiUsageModal");
+    modal.classList.remove("open"); modal.setAttribute("aria-hidden","true");
+  }
+  document.getElementById("closeAiUsageBtn").addEventListener("click", closeAiUsageModal);
+  document.getElementById("aiUsageModal").addEventListener("click", function(e){ if(e.target===this) closeAiUsageModal(); });
 
   function openAccountModal(email){
     var modal=document.getElementById("accountModal");
