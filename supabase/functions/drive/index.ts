@@ -957,44 +957,57 @@ Antes de redactar preguntas, construí un PLAN DE COBERTURA amplio.
 
 FASE 1 — DESCUBRIMIENTO:
 Identificá muchos objetivos y ENFOQUES EVALUATIVOS realmente desarrollados en la fuente. Buscá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita.
+
 Para cada candidato distinguí:
 - objetivo principal;
-- perspectiva evaluativa: qué aspecto diferente se estaría evaluando;
+- perspectiveKey: perspectiva académica concreta que se evalúa;
 - evidencia concreta de la fuente;
 - subtema;
 - categoría cognitiva;
 - bloque conceptual.
 
-IMPORTANTE: un mismo tema puede producir varias preguntas válidas. No reduzcas artificialmente la variedad por pertenecer al mismo bloque.
-Ejemplo: dentro de "células gliales" pueden coexistir función general, protección, fijación, metabolismo, tipos celulares y relación con mielina porque representan perspectivas diferentes.
+Un mismo tema puede producir varias preguntas válidas. No reduzcas artificialmente la variedad por pertenecer al mismo bloque.
+
+REGLA DE IDENTIDAD DEL OBJETIVO:
+Cambiar solamente el formato NO crea una nueva perspectiva.
+Por ejemplo, estas preguntas tienen el mismo objetivo:
+- "¿Qué células gliales aparecen?"
+- "¿Qué rótulos identifican las células gliales?"
+- "¿Cuál de estas opciones corresponde a las células gliales?"
+- "Verdadero/Falso: astrocito y oligodendrocito son células gliales."
+No deben ocupar varias posiciones del mismo examen.
+
+Tampoco constituye una nueva perspectiva:
+- repetir la misma respuesta central con otra redacción;
+- preguntar nuevamente una identificación ya realizada;
+- utilizar un color, ubicación o etiqueta secundaria del dibujo como si fuera un contenido académico nuevo, salvo que la fuente le otorgue significado propio;
+- repetir una función general ya evaluada.
+
+SÍ constituye una nueva perspectiva cuando cambia realmente lo que el estudiante debe demostrar. Por ejemplo:
+- identificar tipos celulares;
+- explicar una función;
+- relacionar una célula con una estructura;
+- explicar una consecuencia;
+- interpretar una relación funcional;
+pueden coexistir aunque pertenezcan al mismo tema.
 
 FASE 2 — SELECCIÓN:
-Seleccioná EXACTAMENTE ${count} candidatos cuando existan suficientes.
-La selección debe maximizar la diversidad de PERSPECTIVAS EVALUATIVAS, no obligatoriamente la diversidad de temas.
-No selecciones dos candidatos si ambos preguntan esencialmente lo mismo y tienen la misma respuesta central.
-Sí podés seleccionar dos o más candidatos del mismo tema si:
-- cambia el objetivo principal;
-- cambia la perspectiva evaluativa;
-- cambia la relación, función, característica o aplicación evaluada.
+Seleccioná EXACTAMENTE ${count} objetivos cuando existan suficientes perspectivas defendibles.
+Priorizá diversidad de perspectivas académicas, no simplemente diversidad de temas.
+Una pregunta debe tener UN objetivo principal.
+Podés seleccionar varias preguntas del mismo tema si sus objetivos y perspectiveKey son sustancialmente diferentes.
 
-Cada objetivo seleccionado debe ser atómico: UNA PREGUNTA = UN OBJETIVO PRINCIPAL.
-No combines dos objetivos independientes dentro de una misma pregunta salvo que la relación entre ambos sea precisamente el objetivo evaluado.
+Antes de aceptar un candidato, comprobá:
+1. ¿Qué debe demostrar concretamente el estudiante?
+2. ¿Ya existe otra pregunta que exija demostrar prácticamente lo mismo?
+3. ¿La diferencia es académica o solamente cambia la redacción/formato/imagen?
+4. ¿La evidencia está realmente desarrollada en la fuente?
 
-CONTROL DE PERSPECTIVA:
-Para cada candidato asigná una etiqueta perspectiveKey específica, por ejemplo:
-- funcion_general_glia
-- proteccion_fisica_quimica
-- fijacion_neuronas
-- metabolismo_neuronal
-- suministro_nutrientes_oxigeno
-- tipos_glia
-- astrocito
-- oligodendrocito_mielina
-No copies estos ejemplos si no están respaldados por la fuente.
-Dos preguntas pueden compartir el mismo cluster/tema, pero no deben compartir el mismo perspectiveKey salvo que no exista otra perspectiva defendible.
+Si la diferencia es solamente de formato, redacción, etiqueta, color o identificación repetida, descartá el candidato y buscá otro.
+Si es una perspectiva académica distinta y respaldada por la fuente, conserválo.
 
-Si hay suficientes candidatos, el plan DEBE contener ${count} objetivos. Solo puede contener menos si realmente no existen ${count} perspectivas evaluativas defendibles en todo el contenido seleccionado.
-No inventes variedad ni uses conocimiento externo. Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
+No reduzcas la cantidad solicitada mientras existan perspectivas académicas defendibles sin utilizar. Solo devolvé menos de ${count} después de revisar todo el contenido seleccionado y comprobar que no existen suficientes objetivos/perspectivas válidos.
+No inventes variedad ni uses conocimiento externo.
 
 El plan debe tener esta estructura:
 {"objectives":[{"key":"clave específica","objective":"un único objetivo principal","perspectiveKey":"perspectiva evaluativa específica","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
