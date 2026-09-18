@@ -422,7 +422,7 @@
     '<div id="previewActionMsg"></div>' +
     '<div class="summarize-row">' +
       '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
-      '<button type="button" class="ghost" id="summarizeBtn">Armar prompt para ChatGPT ✨</button>' +
+      '<button type="button" class="ghost" id="summarizeBtn">Generar resumen con IA ✨</button>' +
     '</div>' +
     '<div id="summaryResult"></div>';
     els.preview.innerHTML = html;
@@ -465,7 +465,7 @@
     document.getElementById("summarizeBtn").addEventListener("click", function(){
       var box = document.getElementById("summaryResult");
       var topic = document.getElementById("summarizeTopic").value.trim();
-      showChatGptPrompt([file], topic, box);
+      generateSummary([file], topic, box);
     });
   }
 
@@ -555,15 +555,11 @@
           '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
           (cleanTopic ? '<div class="banner info" style="margin-top:10px;">Tema solicitado: <strong>' + escapeHtml(cleanTopic) + '</strong></div>' : '') +
           '<div id="summaryText" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(summary) + '</div>' +
-          '<div class="summarize-row" style="margin-top:14px;">' +
-            '<button type="button" id="copySummaryBtn">Copiar resumen 📋</button>' +
-          '</div>' +
-          '<div id="copySummaryMsg" class="muted" style="margin-top:6px;font-size:13px;"></div>';
+          '<div class="summarize-row" style="margin-top:14px;"><button type="button" id="copySummaryBtn">Copiar resumen 📋</button></div>' +
+          '<div id="copySummaryMsg" style="margin-top:6px;font-size:13px;"></div>';
         target.querySelector("#copySummaryBtn").addEventListener("click", function(){
           copyToClipboard(summary).then(function(ok){
-            target.querySelector("#copySummaryMsg").textContent = ok
-              ? "Resumen copiado ✓"
-              : "No se pudo copiar automáticamente.";
+            target.querySelector("#copySummaryMsg").textContent = ok ? "Resumen copiado ✓" : "No se pudo copiar automáticamente.";
           });
         });
       })
