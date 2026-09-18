@@ -953,11 +953,14 @@ ${cleanTopic ? `Tema específico: "${cleanTopic}". Las preguntas deben centrarse
 No inventes datos, conceptos, tratamientos, valores ni definiciones que no aparezcan en los archivos.
 Las preguntas deben ser claras, académicas y variadas. Evitá repetir la misma idea con distinta redacción. Distribuí las preguntas entre los distintos subtemas realmente presentes en la fuente, cuando haya suficiente contenido para hacerlo.
 REGLAS DE CALIDAD:
-- No hagas dos o más preguntas que evalúen esencialmente el mismo dato.
+- No hagas dos o más preguntas que evalúen esencialmente el mismo dato. Si una pregunta ya evalúa una función o relación concreta, no vuelvas a preguntarla simplemente cambiando la redacción.
+- Antes de generar cada pregunta, comprobá que evalúe un dato o relación diferente de las preguntas anteriores.
+- Distribuí las preguntas entre los distintos subtemas y estructuras disponibles. No concentres la mitad del examen en un único aspecto si existen otros contenidos desarrollados en la fuente.
 - No uses como distractores afirmaciones absurdas o claramente ajenas al tema; los distractores deben ser plausibles y estar basados en conceptos presentes en el material, sin alterar su significado.
 - Si el tipo solicitado es "Mixto", combiná opción múltiple, verdadero/falso, respuesta breve y relación de conceptos cuando el material lo permita.
 - En "relación de conceptos", presentá relaciones concretas entre varias estructuras/conceptos y sus funciones o características, y hacé que el estudiante deba identificar la combinación correcta.
 - Priorizá comprensión y aplicación del contenido por sobre la memorización de frases literales, especialmente en dificultades 3 a 5.
+- No infieras secuencias, mecanismos, causas o relaciones que el material no explique explícitamente. Una respuesta debe poder justificarse directamente con la fuente.
 - Si el tema seleccionado tiene subtemas, cubrí esos subtemas sin salir del árbol temático seleccionado.
 - La respuesta correcta y la explicación deben estar respaldadas por el material enviado.
 Devolvé ÚNICAMENTE un JSON válido con esta estructura:
