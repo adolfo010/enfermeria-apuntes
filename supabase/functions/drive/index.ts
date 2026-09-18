@@ -956,61 +956,43 @@ MODO DE PLANIFICACIÓN OBLIGATORIO:
 Antes de redactar preguntas, construí un PLAN DE COBERTURA amplio.
 
 FASE 1 — DESCUBRIMIENTO:
-Identificá muchos objetivos y ENFOQUES EVALUATIVOS realmente desarrollados en la fuente. Buscá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita.
+Identificá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita. Para cada candidato registrá:
+- objective: un único objetivo principal;
+- centralFact: el dato, relación o contenido central que el estudiante debe recuperar para responder;
+- perspectiveKey: perspectiva de evaluación;
+- evidence: evidencia concreta de la fuente;
+- subtopic y category;
+- cluster: bloque conceptual.
 
-Para cada candidato distinguí:
-- objetivo principal;
-- perspectiveKey: perspectiva académica concreta que se evalúa;
-- evidencia concreta de la fuente;
-- subtema;
-- categoría cognitiva;
-- bloque conceptual.
+FASE 2 — CONTROL DE INFORMACIÓN CENTRAL:
+La variedad se determina principalmente por el contenido que el estudiante debe recuperar, no por el formato de la pregunta.
+Antes de seleccionar candidatos compará sus centralFact.
+- Si dos candidatos exigen recuperar esencialmente el mismo dato, relación, función, identificación o respuesta central, son DUPLICADOS aunque tengan distinto formato, redacción, contexto o perspectiveKey.
+- Cambiar opción múltiple por V/F, identificación, aplicación o respuesta breve NO crea diversidad si la respuesta central sigue siendo la misma.
+- Una perspectiva distinta SÍ es válida cuando exige recuperar información central diferente.
+- Varias preguntas pueden pertenecer al mismo tema o cluster, siempre que su centralFact sea sustancialmente diferente.
+- Detalles puramente gráficos como color, posición o una etiqueta repetida no cuentan como nuevo contenido académico salvo que la fuente les atribuya explícitamente significado.
 
-Un mismo tema puede producir varias preguntas válidas. No reduzcas artificialmente la variedad por pertenecer al mismo bloque.
+FASE 3 — SELECCIÓN:
+Seleccioná EXACTAMENTE ${count} objetivos cuando existan suficientes centralFact distintos y respaldados.
+Buscá primero en todo el contenido disponible antes de reducir la cantidad.
+Priorizá variedad de información central y, dentro de ella, variedad de enfoques cognitivos.
+UNA PREGUNTA = UN OBJETIVO PRINCIPAL.
 
-REGLA DE IDENTIDAD DEL OBJETIVO:
-Cambiar solamente el formato NO crea una nueva perspectiva.
-Por ejemplo, estas preguntas tienen el mismo objetivo:
-- "¿Qué células gliales aparecen?"
-- "¿Qué rótulos identifican las células gliales?"
-- "¿Cuál de estas opciones corresponde a las células gliales?"
-- "Verdadero/Falso: astrocito y oligodendrocito son células gliales."
-No deben ocupar varias posiciones del mismo examen.
+Ejemplo:
+- "función general de las células gliales" y "efecto de rodear a las neuronas" pueden ser distintos si exigen respuestas centrales distintas.
+- "función general de las células gliales" y "qué función dejaría de representarse si se eliminan" son el mismo centralFact y no deben ocupar dos posiciones.
 
-Tampoco constituye una nueva perspectiva:
-- repetir la misma respuesta central con otra redacción;
-- preguntar nuevamente una identificación ya realizada;
-- utilizar un color, ubicación o etiqueta secundaria del dibujo como si fuera un contenido académico nuevo, salvo que la fuente le otorgue significado propio;
-- repetir una función general ya evaluada.
-
-SÍ constituye una nueva perspectiva cuando cambia realmente lo que el estudiante debe demostrar. Por ejemplo:
-- identificar tipos celulares;
-- explicar una función;
-- relacionar una célula con una estructura;
-- explicar una consecuencia;
-- interpretar una relación funcional;
-pueden coexistir aunque pertenezcan al mismo tema.
-
-FASE 2 — SELECCIÓN:
-Seleccioná EXACTAMENTE ${count} objetivos cuando existan suficientes perspectivas defendibles.
-Priorizá diversidad de perspectivas académicas, no simplemente diversidad de temas.
-Una pregunta debe tener UN objetivo principal.
-Podés seleccionar varias preguntas del mismo tema si sus objetivos y perspectiveKey son sustancialmente diferentes.
-
-Antes de aceptar un candidato, comprobá:
-1. ¿Qué debe demostrar concretamente el estudiante?
-2. ¿Ya existe otra pregunta que exija demostrar prácticamente lo mismo?
-3. ¿La diferencia es académica o solamente cambia la redacción/formato/imagen?
-4. ¿La evidencia está realmente desarrollada en la fuente?
-
-Si la diferencia es solamente de formato, redacción, etiqueta, color o identificación repetida, descartá el candidato y buscá otro.
-Si es una perspectiva académica distinta y respaldada por la fuente, conserválo.
-
-No reduzcas la cantidad solicitada mientras existan perspectivas académicas defendibles sin utilizar. Solo devolvé menos de ${count} después de revisar todo el contenido seleccionado y comprobar que no existen suficientes objetivos/perspectivas válidos.
-No inventes variedad ni uses conocimiento externo.
+REGLAS:
+- No inventes variedad ni uses conocimiento externo.
+- Cada centralFact debe poder verificarse directamente en la fuente.
+- Si existen ${count} centralFact distintos defendibles, el plan DEBE contener ${count}.
+- Solo devolvé menos si realmente no existen ${count} contenidos centrales distintos tras revisar todo el material seleccionado.
+- No combines dos objetivos independientes en una misma pregunta salvo que la relación entre ellos sea precisamente el objetivo.
+- Mantenete dentro del tema y del árbol seleccionado.
 
 El plan debe tener esta estructura:
-{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","perspectiveKey":"perspectiva evaluativa específica","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
+{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","centralFact":"información central que se evalúa","perspectiveKey":"perspectiva evaluativa","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
 
 No redactes preguntas en esta fase. Devolvé ÚNICAMENTE JSON válido.
 
