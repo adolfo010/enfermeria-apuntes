@@ -272,7 +272,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.14";
+  var APP_VERSION = "0.4.15";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -674,19 +674,19 @@
     var ids = Object.keys(selectedIds).filter(function(id){ return selectedIds[id]; });
     if (ids.length < 1){ bar.style.display = "none"; bar.innerHTML = ""; return; }
 
-    // El término de búsqueda superior también es el tema por defecto para IA.
-    // Si el usuario ya escribió otro tema, se conserva al redibujar la barra.
-    var previousTopic = document.getElementById("multiTopic");
-    var topicValue = previousTopic
-      ? previousTopic.value.trim()
-      : document.getElementById("searchInput").value.trim();
+    var previousOverride = document.getElementById("multiTopicOverride");
+    var overrideValue = previousOverride ? previousOverride.value.trim() : "";
 
     bar.style.display = "flex";
     bar.innerHTML =
       '<span class="count">' + ids.length + (ids.length === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
       '<div style="flex:1;min-width:220px;">' +
-        '<input type="text" id="multiTopic" value="' + escapeHtml(topicValue) + '" placeholder="Tema para el resumen con IA' + (ids.length > 1 ? ' en estos archivos' : '') + ' — ej: huesos de la mano">' +
-        '<div class="muted" style="font-size:12px;margin-top:4px;">Se completa automáticamente con la búsqueda superior. Podés cambiarlo si querés resumir otro tema.</div>' +
+        '<div class="muted" style="font-size:13px;">El tema de la búsqueda se utilizará automáticamente para el resumen y las preguntas de examen.</div>' +
+        '<button type="button" class="ghost small" id="changeAiTopicBtn" style="margin-top:6px;">Cambiar tema para IA</button>' +
+        '<div id="aiTopicOverrideWrap" style="display:none;margin-top:7px;">' +
+          '<input type="text" id="multiTopicOverride" value="' + escapeHtml(overrideValue) + '" placeholder="Tema específico para IA">' +
+          '<div class="muted" style="font-size:12px;margin-top:4px;">Usá esta opción solo si querés buscar una cosa y resumir otra.</div>' +
+        '</div>' +
       '</div>' +
       '<div class="summary-controls" style="flex-basis:100%;">' +
         '<div class="summary-control">' +
@@ -710,10 +710,25 @@
         '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="multiExamAnswers" checked> Mostrar respuestas y explicación</label>' +
         '<button type="button" id="generateMultiExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
       '</div>';
+
+    document.getElementById("changeAiTopicBtn").addEventListener("click", function(){
+      var wrap = document.getElementById("aiTopicOverrideWrap");
+      wrap.style.display = wrap.style.display === "none" ? "block" : "none";
+      this.textContent = wrap.style.display === "none" ? "Cambiar tema para IA" : "Usar tema de búsqueda";
+    });
+
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
       renderResults(lastSearchResults);
     });
+
+    function getAiTopic(){
+      var override = document.getElementById("multiTopicOverride");
+      return override && override.value.trim()
+        ? override.value.trim()
+        : document.getElementById("searchInput").value.trim();
+    }
+
     function updateSummaryControls(){
       var levels=["Breve","Breve","Equilibrado","Detallado","Muy detallado"];
       var tech=["Introductorio","Básico","Académico","Técnico","Profesional"];
@@ -726,11 +741,12 @@
     updateSummaryControls();
 
     document.getElementById("multiExamBtn").addEventListener("click", function(){
-      var c=document.getElementById("multiExamControls");
-      c.style.display=c.style.display==="none" ? "grid" : "none";
+      var box=document.getElementById("multiExamControls");
+      box.style.display=box.style.display==="none" ? "grid" : "none";
     });
+
     document.getElementById("generateMultiExamBtn").addEventListener("click", function(){
-      var topic=document.getElementById("multiTopic").value.trim();
+      var topic=getAiTopic();
       var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
       generateQuestions(chosen,topic,els.preview,
         Number(document.getElementById("multiExamCount").value),
@@ -740,11 +756,11 @@
     });
 
     document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
-      var topic = document.getElementById("multiTopic").value.trim();
-      var chosen = lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      var summaryLevel = Number(document.getElementById("summaryLevel").value) || 3;
-      var technicalLevel = Number(document.getElementById("technicalLevel").value) || 3;
-      generateSummary(chosen, topic, els.preview, summaryLevel, technicalLevel);
+      var topic=getAiTopic();
+      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
+      var summaryLevel=Number(document.getElementById("summaryLevel").value)||3;
+      var technicalLevel=Number(document.getElementById("technicalLevel").value)||3;
+      generateSummary(chosen,topic,els.preview,summaryLevel,technicalLevel);
     });
   }
 
