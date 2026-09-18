@@ -526,14 +526,20 @@ async function runIndexJob(jobId:number,user:{id:string;email?:string;role:strin
    const fr=await fetchWithTimeout("https://api.openai.com/v1/files",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`},body:form},OPENAI_TIMEOUT_MS);const fj=await fr.json();if(!fr.ok)throw new Error(fj?.error?.message||"No se pudo enviar el bloque del índice a OpenAI");
    try{
     await assertAiBudget();
-    const prompt=`Analizá VISUAL Y TEXTUALMENTE ÚNICAMENTE las páginas del archivo PDF adjunto. Construí un ÍNDICE TEMÁTICO del contenido que realmente aparece en estas páginas. NO hagas un resumen. Identificá encabezados, capítulos, unidades, sistemas, órganos, conceptos y subtemas que estén efectivamente presentes. Conservá la terminología del material. NO inventes, no completes con conocimiento externo y no agregues temas solo porque sean habituales en la materia. Si una página contiene texto escaneado o imágenes, inspeccioná igualmente su contenido visible. Devolvé exclusivamente el objeto JSON solicitado.
-REGLAS:
+    const prompt=`Analizá VISUAL Y TEXTUALMENTE ÚNICAMENTE las páginas del archivo PDF adjunto. Construí un ÍNDICE TEMÁTICO DE ESTUDIO del contenido académico que realmente está desarrollado en estas páginas. NO hagas un resumen. El objetivo del índice es permitir que un estudiante seleccione un tema y obtenga después un resumen o preguntas de examen únicamente sobre ese tema.
+PRIORIZÁ la estructura académica real del material: títulos de capítulos o apartados, unidades, sistemas, órganos, procesos, conceptos y subtemas que tengan desarrollo explicativo propio. Conservá la terminología del material. NO inventes, no completes con conocimiento externo y no agregues temas solo porque sean habituales en la materia. Si una página contiene texto escaneado o imágenes, inspeccioná igualmente su contenido visible.
+REGLAS IMPORTANTES:
+- Un elemento SOLO debe entrar al índice si tiene DESARROLLO ACADÉMICO suficiente en el fragmento: definición, explicación, características, estructura, función, clasificación, procedimiento, relación con otros conceptos o contenido equivalente.
+- NO indexes una palabra o concepto que aparezca solamente como mención, etiqueta de una figura, ejemplo aislado, lista incidental o pregunta introductoria sin desarrollo.
+- NO conviertas cada término anatómico o palabra destacada de un esquema en un subtema. Si el esquema solo etiqueta partes, indexá el tema que desarrolla el esquema, no cada etiqueta.
+- Si un concepto aparece primero como mención y posteriormente tiene desarrollo propio, indexá el concepto por su desarrollo, no por la mención inicial.
+- Evitá fragmentar excesivamente el índice. Preferí un subtema que agrupe contenido estrechamente relacionado cuando el material lo presenta como una misma explicación.
 - "title" debe ser el nombre del tema o subtema tal como aparece o se desprende directamente del material.
 - "parent" debe ser el tema padre; para temas principales usar cadena vacía.
 - No repitas el mismo tema dentro del fragmento.
-- Incluí varios temas cuando las páginas contengan varios apartados.
-- Si el fragmento no contiene contenido académico identificable, devolvé topics=[].
-- Un bloque vacío NO es un error: puede corresponder a portada, índice, separadores o páginas sin contenido académico.`;
+- Si el fragmento contiene solamente menciones, etiquetas, portada, índice o material sin desarrollo académico identificable, devolvé topics=[].
+- Un bloque vacío NO es un error: puede corresponder a portada, índice, separadores o páginas sin contenido académico.
+Devolvé exclusivamente el objeto JSON solicitado.`;
     const makeIndexResponse=async(promptText:string,maxTokens:number)=>await fetchWithTimeout("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:OPENAI_MODEL,input:[{role:"user",content:[{type:"input_text",text:"Archivo: "+name},{type:"input_file",file_id:fj.id},{type:"input_text",text:promptText}]}],text:{format:{type:"json_schema",name:"topic_index",description:"Índice temático extraído exclusivamente del PDF adjunto.",strict:true,schema:{type:"object",properties:{topics:{type:"array",items:{type:"object",properties:{title:{type:"string"},parent:{type:"string"}},required:["title","parent"],additionalProperties:false}}},required:["topics"],additionalProperties:false}}},max_output_tokens:maxTokens})},OPENAI_TIMEOUT_MS);
     const rr=await makeIndexResponse(prompt,1800);
     const rj=await rr.json();
