@@ -930,26 +930,58 @@ Si se solicitan respuestas, completá correctAnswer y explanation. Si no se soli
 ${answers ? "Incluí respuesta correcta y una explicación breve basada en el material." : "No incluyas respuestas ni explicaciones."}`;
 
       const fileIds: string[] = [];
+      const fileLabels: string[] = [];
       try {
         for (const f of filesInput) {
           const content = await getSummarizableContent(f.fileId, f.mimeType, accessToken);
           if (content.bytes.length > MAX_SUMMARIZE_BYTES) throw new Error("TOO_LARGE");
-          const form = new FormData();
-          form.append("purpose", "user_data");
-          form.append("file", new Blob([content.bytes], { type: content.mime }), f.fileName || "apunte");
-          const fr = await fetchWithTimeout("https://api.openai.com/v1/files", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
-            body: form,
-          }, OPENAI_TIMEOUT_MS);
-          const fj = await fr.json();
-          if (!fr.ok) throw new Error(fj?.error?.message || "No se pudo enviar el archivo a OpenAI");
-          fileIds.push(fj.id);
+          const allChunks = content.mime === "application/pdf" ? await splitPdfIntoChunks(content.bytes, 3) : [content.bytes];
+          let selectedIndexes: number[] | null = null;
+
+          if (cleanTopic) {
+            const meta = await getDriveMetaForIndex(f.fileId, accessToken);
+            const fp = indexFingerprint(meta);
+            const idx = await getCurrentIndex(user.id, f.fileId, fp);
+            if (idx && Array.isArray(idx.topics)) {
+              const nt = normalizeForTopic(cleanTopic);
+              const set = new Set<number>();
+              for (const t of idx.topics) {
+                const title = normalizeForTopic(t.title || "");
+                const parent = normalizeForTopic(t.parent || "");
+                if (title === nt || title.includes(nt) || nt.includes(title) || parent === nt || parent.includes(nt)) {
+                  const a = Math.max(0, Number(t.chunk_start || 0));
+                  const b = Math.min(allChunks.length - 1, Number(t.chunk_end ?? a));
+                  for (let c = a; c <= b; c++) set.add(c);
+                }
+              }
+              if (set.size) selectedIndexes = Array.from(set).sort((a,b)=>a-b);
+            }
+          }
+
+          const indexes = selectedIndexes || allChunks.map((_,i)=>i);
+          for (const chunkIndex of indexes) {
+            const chunkBytes = allChunks[chunkIndex];
+            const label = allChunks.length > 1
+              ? `${f.fileName || "apunte"} — parte ${chunkIndex + 1} de ${allChunks.length}.pdf`
+              : (f.fileName || "apunte");
+            const form = new FormData();
+            form.append("purpose", "user_data");
+            form.append("file", new Blob([chunkBytes], { type: content.mime }), label);
+            const fr = await fetchWithTimeout("https://api.openai.com/v1/files", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+              body: form,
+            }, OPENAI_TIMEOUT_MS);
+            const fj = await fr.json();
+            if (!fr.ok) throw new Error(fj?.error?.message || "No se pudo enviar el archivo a OpenAI");
+            fileIds.push(fj.id);
+            fileLabels.push(label);
+          }
         }
 
         const contentParts: any[] = [];
         for (let i=0;i<fileIds.length;i++) {
-          if (filesInput[i].fileName) contentParts.push({ type:"input_text", text:`Archivo: ${filesInput[i].fileName}` });
+          contentParts.push({ type:"input_text", text:`Archivo: ${fileLabels[i]}` });
           contentParts.push({ type:"input_file", file_id:fileIds[i] });
         }
         contentParts.push({ type:"input_text", text: prompt });
