@@ -953,35 +953,41 @@ ${cleanTopic ? `Tema específico: "${cleanTopic}". Las preguntas deben centrarse
 No inventes datos, conceptos, tratamientos, valores ni definiciones que no aparezcan en los archivos.
 
 MODO DE PLANIFICACIÓN OBLIGATORIO:
-Antes de redactar preguntas, construí un PLAN DE COBERTURA en dos fases.
+Antes de redactar preguntas, construí un PLAN DE COBERTURA amplio.
 
 FASE 1 — DESCUBRIMIENTO:
-Identificá una bolsa amplia de objetivos realmente desarrollados en la fuente. Buscá al menos ${Math.max(count * 3, 15)} candidatos cuando el contenido lo permita. Para cada candidato determiná:
-- objetivo principal que podría evaluarse;
-- evidencia concreta de la fuente;
-- subtema;
-- categoría cognitiva;
-- bloque conceptual al que pertenece.
+Identificá muchos objetivos y enfoques de evaluación realmente desarrollados en la fuente. Buscá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita.
+IMPORTANTE: objetivos relacionados NO son automáticamente duplicados. Un mismo tema puede y debe poder evaluarse desde perspectivas diferentes: definición, función, característica, identificación, relación, aplicación, consecuencia, comparación, etc.
 
-FASE 2 — SELECCIÓN:
-Agrupá objetivos del mismo bloque conceptual y seleccioná EXACTAMENTE ${count} objetivos principales independientes cuando existan suficientes candidatos defendibles.
-Regla fundamental: UNA PREGUNTA = UN OBJETIVO PRINCIPAL.
-El objetivo puede tener contenido de apoyo, pero la respuesta no debe depender de dos objetivos independientes.
+FASE 2 — AGRUPAMIENTO Y SELECCIÓN:
+Agrupá los candidatos por bloque conceptual únicamente para conocer su distribución. NO elimines automáticamente los candidatos que pertenezcan al mismo bloque.
+Seleccioná EXACTAMENTE ${count} objetivos/perspectivas cuando existan suficientes contenidos defendibles.
+Dentro de un mismo tema o bloque podés seleccionar varias perspectivas si realmente cambian el enfoque de evaluación.
 
-No cuentes como objetivos independientes partes de una misma cadena. Por ejemplo, "alta tasa metabólica", "no almacena nutrientes" y "necesita suministro constante" pertenecen al mismo bloque metabólico. No ocupes tres posiciones con ellos.
-Sin embargo, no descartes contenidos distintos solo porque estén relacionados con el tema general. Explorá todo el material antes de concluir que faltan objetivos.
+Ejemplo válido:
+- objetivo A: función general de la glía
+- objetivo B: protección física y química
+- objetivo C: fijación de neuronas
+Aunque estén relacionados con el mismo tema, pueden coexistir porque evalúan aspectos diferentes.
 
-PRIORIZACIÓN:
-- Distribuí las preguntas entre subtemas diferentes.
-- Combiná definición, estructura, características, función, clasificación, relación, proceso, identificación y aplicación cuando existan.
-- Priorizá objetivos distintos antes que repetir un bloque.
-- Para cada objetivo seleccionado indicá una evidencia concreta que permita verificar posteriormente que la pregunta no inventa información.
-- Si hay suficientes objetivos independientes, el plan DEBE contener ${count}.
-- Solo puede contener menos si realmente no existen ${count} objetivos independientes respaldados por la fuente.
-- No uses conocimiento externo.
+Ejemplo que debe evitarse:
+- "las glías protegen"
+- "las glías brindan protección"
+si ambas preguntas solo solicitan la misma afirmación.
+
+UNA PREGUNTA = UN OBJETIVO PRINCIPAL, pero un mismo tema puede tener VARIOS objetivos principales diferentes.
+
+REGLAS DE SELECCIÓN:
+- Priorizá diversidad de enfoques, no simplemente diversidad de temas.
+- No fuerces que cada pregunta corresponda a un tema completamente diferente.
+- Si un tema importante tiene varias características o funciones desarrolladas, es correcto generar varias preguntas sobre él desde perspectivas diferentes.
+- No reduzcas la cantidad solicitada solo porque varios objetivos pertenecen al mismo tema.
+- Solo devolvé menos de ${count} si realmente no existen ${count} objetivos/perspectivas defendibles en todo el contenido seleccionado.
+- No inventes variedad ni uses conocimiento externo.
+- Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
 
 El plan debe tener esta estructura:
-{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
+{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
 
 No redactes preguntas en esta fase. Devolvé ÚNICAMENTE JSON válido.
 
