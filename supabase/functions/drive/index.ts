@@ -1072,7 +1072,10 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
         }
         if(!questions?.questions || !Array.isArray(questions.questions)) throw new Error("La IA devolvió un formato de preguntas no válido.");
 
-        // Control de diversidad: si la IA repite objetivos, se ejecuta una única reparación.
+        // Control de diversidad en dos capas:
+        // 1) coverageKey repetido.
+        // 2) similitud léxica alta entre preguntas/Respuestas, para detectar
+        //    redundancias semánticas sencillas aunque la IA haya usado claves distintas.
         const normalizeCoverage = (s: any) => normalizeForTopic(String(s || ""));
         const coverageCounts = new Map<string, number>();
         for (const q of questions.questions) {
@@ -1081,8 +1084,37 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
         }
         const duplicateCoverage = Array.from(coverageCounts.entries()).filter(([, n]) => n > 1);
 
-        if (duplicateCoverage.length > 0) {
-          const duplicateKeys = duplicateCoverage.map(([k]) => k).join(", ");
+        const stopWords = new Set([
+          "que","cual","cuales","como","segun","material","fuente","tema","indique","indica",
+          "señale","señala","corresponde","correcta","correcto","siguiente","respecto",
+          "principalmente","principal","una","uno","unos","unas","los","las","del","de",
+          "la","el","y","o","en","por","para","con","al","un"
+        ]);
+        const semanticTokens = (s: any): Set<string> => {
+          const n = normalizeCoverage(s);
+          return new Set(n.split(" ").filter((w:string) => w.length >= 4 && !stopWords.has(w)));
+        };
+        const jaccard = (a: Set<string>, b: Set<string>): number => {
+          if (!a.size || !b.size) return 0;
+          let intersection = 0;
+          for (const x of a) if (b.has(x)) intersection++;
+          return intersection / (a.size + b.size - intersection);
+        };
+        const similarPairs: string[] = [];
+        for (let i = 0; i < questions.questions.length; i++) {
+          const a = questions.questions[i];
+          const aTokens = semanticTokens(`${a?.question || ""} ${a?.correctAnswer || ""}`);
+          for (let j = i + 1; j < questions.questions.length; j++) {
+            const b = questions.questions[j];
+            const bTokens = semanticTokens(`${b?.question || ""} ${b?.correctAnswer || ""}`);
+            if (jaccard(aTokens, bTokens) >= 0.62) {
+              similarPairs.push(`P${i + 1}-P${j + 1}`);
+            }
+          }
+        }
+
+        if (duplicateCoverage.length > 0 || similarPairs.length > 0) {
+          const duplicateKeys = duplicateCoverage.map(([k]) => k).join(", ") || "ninguno";
           const repairPrompt = `REPARÁ ESTE EXAMEN PARA ELIMINAR REPETICIONES CONCEPTUALES.
 
 Tema: ${cleanTopic || "material completo"}
@@ -1090,17 +1122,22 @@ Cantidad exacta: ${count}
 Tipo solicitado: ${type}
 Dificultad: ${difficultyText}
 
-El examen generado contiene coverageKey repetidos: ${duplicateKeys}. Conservá las preguntas que evalúan objetivos claramente distintos y reemplazá las repetidas por preguntas nuevas basadas EXCLUSIVAMENTE en los archivos adjuntos.
+El control automático detectó:
+- coverageKey repetidos: ${duplicateKeys}
+- pares con alta similitud léxica: ${similarPairs.join(", ") || "ninguno"}
+
+Conservá las preguntas que evalúan objetivos claramente distintos y reemplazá SOLO las redundantes por preguntas nuevas basadas EXCLUSIVAMENTE en los archivos adjuntos.
 
 REGLAS DE REPARACIÓN:
 - Cada pregunta debe evaluar un objetivo concreto diferente.
 - No reemplaces una pregunta repetida simplemente cambiando su redacción: cambiá el concepto evaluado.
+- Si dos preguntas tratan la misma cadena funcional, estructura, función o dato, dejá solo una y usá el espacio para otro contenido desarrollado en la fuente.
 - Distribuí las preguntas entre distintos subtemas, estructuras, características, funciones y relaciones disponibles.
-- Una misma cadena conceptual no debe ocupar varias preguntas salvo que exista una relación adicional claramente diferente.
 - No inventes contenido ni salgas del tema seleccionado.
 - Cada coverageKey debe ser específico y distinto cuando exista contenido suficiente.
 - Mantené el tipo de pregunta solicitado y la dificultad indicada.
 - Si el tipo es Mixto, combiná formatos cuando el material permita hacerlo.
+- No elimines una pregunta solamente porque comparte una palabra con otra; la redundancia debe ser conceptual.
 
 EXAMEN ACTUAL:
 ${JSON.stringify(questions.questions)}
