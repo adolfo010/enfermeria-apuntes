@@ -953,10 +953,13 @@ ${cleanTopic ? `Tema específico: "${cleanTopic}". Las preguntas deben centrarse
 No inventes datos, conceptos, tratamientos, valores ni definiciones que no aparezcan en los archivos.
 
 MODO DE PLANIFICACIÓN OBLIGATORIO:
-Antes de redactar las preguntas, construí internamente un PLAN DE COBERTURA. Identificá primero objetivos de evaluación genuinamente distintos que estén desarrollados en la fuente y sean adecuados para el tema seleccionado. Después asigná una pregunta a cada objetivo.
+Antes de redactar las preguntas, construí primero un PLAN DE COBERTURA amplio. Identificá objetivos de evaluación genuinamente distintos que estén desarrollados en la fuente.
+Primero buscá al menos ${Math.max(count * 2, 10)} objetivos candidatos cuando el contenido lo permita. Después agrupá los que pertenezcan al mismo bloque conceptual o cadena causal/funcional y seleccioná los objetivos más independientes.
+Debés seleccionar EXACTAMENTE ${count} objetivos si la fuente contiene esa cantidad de objetivos defendibles. Solo devolvé menos si, tras revisar todo el contenido disponible, realmente no existen ${count} objetivos independientes.
 Priorizá, cuando estén disponibles, categorías diferentes: definición, estructura/componentes, características, función, clasificación, relación entre conceptos, mecanismo/proceso, identificación, consecuencias o aplicación.
-Una misma afirmación debe contar como un solo objetivo. Por ejemplo, "amortiguación física y química" es un único objetivo y no debe generar dos preguntas.
-Si el contenido no permite alcanzar la cantidad solicitada con objetivos genuinamente diferentes, reducí la cantidad al máximo justificable. No fabriques variedad.
+Una misma cadena conceptual no debe ocupar varias posiciones. Por ejemplo, "alta tasa metabólica", "no almacena nutrientes" y "necesita suministro constante" forman un bloque relacionado: elegí como máximo los objetivos más diferenciados de ese bloque y buscá otros contenidos desarrollados para completar.
+El agrupamiento sirve para evitar redundancias, no para descartar contenidos distintos. Explorá todos los subtemas, estructuras, funciones, características, relaciones y elementos gráficos desarrollados antes de concluir que no hay suficientes objetivos.
+No fabriques variedad ni uses conocimiento externo. Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
 
 REGLAS:
 - No hagas dos preguntas que evalúen esencialmente el mismo concepto, estructura, función, relación o dato, aunque cambies la redacción.
