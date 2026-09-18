@@ -586,7 +586,15 @@
         '</div>' +
       '</div>' +
       '<button type="button" id="multiSummarizeBtn">Generar resumen con IA ✨</button>' +
-      '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>';
+      '<button type="button" id="multiExamBtn">Preguntas de examen 📝</button>' +
+      '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>' +
+      '<div id="multiExamControls" class="exam-controls" style="display:none;flex-basis:100%;">' +
+        '<div><label for="multiExamCount">Cantidad</label><select id="multiExamCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
+        '<div><label for="multiExamType">Tipo</label><select id="multiExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
+        '<div><label for="multiExamDifficulty">Dificultad</label><select id="multiExamDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
+        '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="multiExamAnswers" checked> Mostrar respuestas y explicación</label>' +
+        '<button type="button" id="generateMultiExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+      '</div>';
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
       renderResults(lastSearchResults);
@@ -601,6 +609,20 @@
     document.getElementById("summaryLevel").addEventListener("input", updateSummaryControls);
     document.getElementById("technicalLevel").addEventListener("input", updateSummaryControls);
     updateSummaryControls();
+
+    document.getElementById("multiExamBtn").addEventListener("click", function(){
+      var c=document.getElementById("multiExamControls");
+      c.style.display=c.style.display==="none" ? "grid" : "none";
+    });
+    document.getElementById("generateMultiExamBtn").addEventListener("click", function(){
+      var topic=document.getElementById("multiTopic").value.trim();
+      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
+      generateQuestions(chosen,topic,els.preview,
+        Number(document.getElementById("multiExamCount").value),
+        document.getElementById("multiExamType").value,
+        Number(document.getElementById("multiExamDifficulty").value),
+        document.getElementById("multiExamAnswers").checked);
+    });
 
     document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
       var topic = document.getElementById("multiTopic").value.trim();
