@@ -526,9 +526,13 @@ async function runIndexJob(jobId:number,user:{id:string;email?:string;role:strin
    const fr=await fetchWithTimeout("https://api.openai.com/v1/files",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`},body:form},OPENAI_TIMEOUT_MS);const fj=await fr.json();if(!fr.ok)throw new Error(fj?.error?.message||"No se pudo enviar el bloque del índice a OpenAI");
    try{
     await assertAiBudget();
+    const existingTopicsList = topics.slice(0,60).map((t:any)=>`- "${t.title}"${t.parent?` (dentro de: "${t.parent}")`:""}`).join("\n");
+    const continuityBlock = existingTopicsList
+      ? `\nTEMAS YA IDENTIFICADOS EN FRAGMENTOS ANTERIORES DEL MISMO DOCUMENTO:\n${existingTopicsList}\nSi el contenido de este fragmento continúa, profundiza o pertenece a alguno de estos temas, usá EXACTAMENTE el mismo título (carácter por carácter) en "title" o en "parent" según corresponda, en vez de crear un título nuevo o parecido. Creá un tema nuevo únicamente si realmente no continúa ninguno de los ya listados.\n`
+      : "";
     const prompt=`Analizá VISUAL Y TEXTUALMENTE ÚNICAMENTE las páginas del archivo PDF adjunto. Construí un ÍNDICE TEMÁTICO DE ESTUDIO del contenido académico que realmente está desarrollado en estas páginas. NO hagas un resumen. El objetivo del índice es permitir que un estudiante seleccione un tema y obtenga después un resumen o preguntas de examen únicamente sobre ese tema.
 PRIORIZÁ la estructura académica real del material: títulos de capítulos o apartados, unidades, sistemas, órganos, procesos, conceptos y subtemas que tengan desarrollo explicativo propio. Conservá la terminología del material. NO inventes, no completes con conocimiento externo y no agregues temas solo porque sean habituales en la materia. Si una página contiene texto escaneado o imágenes, inspeccioná igualmente su contenido visible.
-REGLAS IMPORTANTES:
+${continuityBlock}REGLAS IMPORTANTES:
 - Un elemento SOLO debe entrar al índice si tiene DESARROLLO ACADÉMICO suficiente en el fragmento: definición, explicación, características, estructura, función, clasificación, procedimiento, relación con otros conceptos o contenido equivalente.
 - NO indexes una palabra o concepto que aparezca solamente como mención, etiqueta de una figura, ejemplo aislado, lista incidental o pregunta introductoria sin desarrollo.
 - NO conviertas cada término anatómico o palabra destacada de un esquema en un subtema. Si el esquema solo etiqueta partes, indexá el tema que desarrolla el esquema, no cada etiqueta.
