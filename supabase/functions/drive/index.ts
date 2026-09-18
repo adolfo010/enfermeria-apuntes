@@ -1049,7 +1049,62 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
           contentParts.push({ type:"input_text", text:`Archivo: ${fileLabels[i]}` });
           contentParts.push({ type:"input_file", file_id:fileIds[i] });
         }
-        contentParts.push({ type:"input_text", text: prompt });
+        // v76: plan de cobertura previo a la redacción. La IA primero agrupa
+        // objetivos relacionados y selecciona objetivos suficientemente independientes.
+        const planningPrompt = `ANALIZÁ EXCLUSIVAMENTE LOS ARCHIVOS ADJUNTOS PARA PLANIFICAR UN EXAMEN.
+Tema: ${cleanTopic || "material completo"}
+Cantidad solicitada: ${count}
+Tipo: ${type}
+Dificultad: ${difficultyText}
+
+No redactes preguntas todavía. Generá solamente un PLAN DE COBERTURA.
+
+1. Identificá los objetivos de evaluación realmente desarrollados en la fuente.
+2. Agrupá los objetivos que pertenecen al mismo bloque conceptual o a una misma cadena causal/funcional.
+3. Seleccioná hasta ${count} objetivos que sean suficientemente independientes entre sí.
+4. Priorizá variedad de subtemas y de categorías cognitivas (definición, estructura, características, función, clasificación, relación, proceso, identificación, aplicación).
+5. No cuentes como objetivos independientes afirmaciones que formen una misma cadena. Ejemplo: "alta tasa metabólica", "no almacena nutrientes" y "necesita suministro constante" son un bloque relacionado; evitá ocupar tres preguntas con ese mismo bloque.
+6. Si no existen ${count} objetivos independientes, devolvé menos objetivos. No inventes variedad.
+7. Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
+
+Devolvé ÚNICAMENTE JSON válido:
+{"objectives":[{"key":"clave específica","objective":"objetivo de evaluación concreto","cluster":"bloque conceptual al que pertenece","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación","sourceBasis":"breve indicación del contenido de la fuente que lo respalda"}]}`;
+
+        const planningParts = [...contentParts, { type:"input_text", text: planningPrompt }];
+        await assertAiBudget();
+        const planRes = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+          method:"POST",
+          headers:{ Authorization:`Bearer ${OPENAI_API_KEY}`, "Content-Type":"application/json" },
+          body:JSON.stringify({ model:OPENAI_MODEL, input:[{role:"user",content:planningParts}], max_output_tokens:5000 }),
+        }, OPENAI_TIMEOUT_MS);
+        const planJson = await planRes.json();
+        await recordOpenAIUsage(planJson, { user, action: "generateQuestions", stage: "planning", topic: cleanTopic, files: filesInput });
+        if(!planRes.ok) throw new Error(planJson?.error?.message || "Error al planificar la cobertura del examen");
+        const planRaw = (planJson.output || []).flatMap((o:any)=>o.content||[]).map((p:any)=>p.text||"").join("").trim();
+        if(!planRaw) throw new Error("La IA no devolvió el plan de cobertura.");
+        let coveragePlan;
+        try {
+          coveragePlan = JSON.parse(planRaw.replace(/^\`\`\`json\s*/i,"").replace(/\s*\`\`\`$/,""));
+        } catch(_e) {
+          throw new Error("La IA devolvió un plan de cobertura no válido.");
+        }
+        if(!coveragePlan?.objectives || !Array.isArray(coveragePlan.objectives)) {
+          throw new Error("El plan de cobertura no tiene un formato válido.");
+        }
+        coveragePlan.objectives = coveragePlan.objectives.slice(0, count);
+
+        const plannedObjectives = coveragePlan.objectives.map((o:any, i:number) =>
+          `${i + 1}. [${o?.category || "otro"}] ${o?.objective || ""} | bloque: ${o?.cluster || ""} | clave: ${o?.key || ""}`
+        ).join("\n");
+
+        const promptWithPlan = prompt + `
+
+PLAN DE COBERTURA PREVIAMENTE SELECCIONADO:
+${plannedObjectives}
+
+REGLA CRÍTICA: generá una pregunta por cada objetivo del plan, en el mismo orden. No agregues objetivos nuevos si el plan ya contiene la cantidad suficiente. No conviertas un mismo bloque conceptual en varias preguntas. Si dos objetivos del plan resultan ser esencialmente el mismo, conservá solo uno y utilizá el siguiente objetivo independiente disponible del plan. El coverageKey de cada pregunta debe corresponder al objetivo que evalúa.`;
+
+        contentParts[contentParts.length - 1] = { type:"input_text", text: promptWithPlan };
 
         await assertAiBudget();
         const rr = await fetchWithTimeout("https://api.openai.com/v1/responses", {
