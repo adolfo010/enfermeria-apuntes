@@ -954,8 +954,11 @@ No inventes datos, conceptos, tratamientos, valores ni definiciones que no apare
 Las preguntas deben ser claras, académicas y variadas. Evitá repetir la misma idea con distinta redacción. Distribuí las preguntas entre los distintos subtemas realmente presentes en la fuente, cuando haya suficiente contenido para hacerlo.
 REGLAS DE CALIDAD:
 - No hagas dos o más preguntas que evalúen esencialmente el mismo dato. Si una pregunta ya evalúa una función o relación concreta, no vuelvas a preguntarla simplemente cambiando la redacción.
-- Antes de generar cada pregunta, comprobá que evalúe un dato o relación diferente de las preguntas anteriores.
+- Antes de generar cada pregunta, construí internamente un mapa de cobertura de los conceptos disponibles y asigná a cada pregunta un objetivo de evaluación distinto. La repetición de una respuesta correcta, estructura o función por sí sola NO constituye variedad.
+- En particular, no generes varias preguntas sobre la misma cadena funcional (por ejemplo, dendritas reciben mensajes, axón conduce información, botones terminales liberan neurotransmisores) salvo que una pregunta evalúe una relación adicional claramente diferente.
 - Distribuí las preguntas entre los distintos subtemas y estructuras disponibles. No concentres la mitad del examen en un único aspecto si existen otros contenidos desarrollados en la fuente.
+- Cuando existan suficientes contenidos, procurá cubrir definición, estructura, características, funciones, componentes y relaciones diferentes antes de repetir un concepto.
+- Si la cantidad solicitada obliga a repetir un área por falta de contenido, cambiá el enfoque cognitivo de la pregunta y no repitas la misma afirmación textual.
 - No uses como distractores afirmaciones absurdas o claramente ajenas al tema; los distractores deben ser plausibles y estar basados en conceptos presentes en el material, sin alterar su significado.
 - Si el tipo solicitado es "Mixto", combiná opción múltiple, verdadero/falso, respuesta breve y relación de conceptos cuando el material lo permita.
 - En "relación de conceptos", presentá relaciones concretas entre varias estructuras/conceptos y sus funciones o características, y hacé que el estudiante deba identificar la combinación correcta.
