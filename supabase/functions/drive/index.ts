@@ -1100,6 +1100,12 @@ NO REDACTES PREGUNTAS. Construí solamente el plan.
 Identificá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita. Para cada uno indicá objective, centralFact, perspectiveKey, cluster, subtopic, category y sourceBasis.
 centralFact es la información central que el estudiante debe recuperar para responder.
 
+RESTRICCIÓN TEMÁTICA OBLIGATORIA:
+- Si el tema seleccionado es un subtema (por ejemplo, "Neurona"), cada objetivo debe pertenecer directamente a ese tema o a uno de sus subtemas descendientes.
+- No conviertas una mención incidental de un concepto padre, vecino o de otro tema en un objetivo.
+- Si el material contiene una frase general sobre "tejido nervioso", "sistema nervioso" u otro concepto más amplio dentro del bloque de "Neurona", esa frase no habilita una pregunta sobre el concepto general.
+- El objetivo debe poder justificarse como contenido específico del tema seleccionado, no solamente como una frase que aparece en las páginas seleccionadas.
+
 Seleccioná EXACTAMENTE ${count} objetivos si existen suficientes contenidos defendibles. Un mismo tema puede tener varias preguntas válidas.
 Dos candidatos son duplicados si exigen recuperar esencialmente el mismo dato, función, relación, identificación o respuesta central, aunque cambien formato, redacción, contexto o perspectiveKey.
 Cambiar opción múltiple por verdadero/falso, identificación, aplicación o respuesta breve NO crea un objetivo nuevo si la respuesta central es la misma.
@@ -1114,6 +1120,7 @@ VERIFICACIÓN FINAL:
 - Cada centralFact debe tener evidencia en sourceBasis.
 - No reduzcas la cantidad por el simple hecho de que varios objetivos pertenezcan al mismo tema.
 - Solo devolvé menos si realmente no existen ${count} contenidos centrales distintos.
+- Antes de entregar el plan, eliminá cualquier objetivo que corresponda a un tema padre, vecino o incidental y no al tema seleccionado.
 
 Devolvé ÚNICAMENTE JSON válido:
 {"objectives":[{"key":"clave específica","objective":"un único objetivo principal","centralFact":"información central evaluada","perspectiveKey":"perspectiva evaluativa","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}`;
@@ -1291,7 +1298,8 @@ Devolvé exactamente los campos del esquema y solo objetivos nuevos.`;
 PLAN DE COBERTURA PREVIAMENTE SELECCIONADO:
 ${plannedObjectives}
 
-REGLA CRÍTICA: generá una pregunta por cada objetivo del plan, en el mismo orden. Podés generar varias preguntas del mismo bloque si evalúan centralFact diferentes. No combines objetivos independientes y no cambies el objetivo del plan. El coverageKey de cada pregunta debe corresponder al objetivo que evalúa.`;
+REGLA CRÍTICA: generá una pregunta por cada objetivo del plan, en el mismo orden. Podés generar varias preguntas del mismo bloque si evalúan centralFact diferentes. No combines objetivos independientes y no cambies el objetivo del plan.
+REGLA TEMÁTICA: la pregunta debe evaluar exclusivamente el tema seleccionado y el contenido específico representado por su objetivo. No introduzcas preguntas sobre conceptos generales del material solo porque aparecen en los mismos archivos o páginas. El coverageKey de cada pregunta debe corresponder al objetivo que evalúa.`;
 
         contentParts[contentParts.length - 1] = { type:"input_text", text: promptWithPlan };
 
