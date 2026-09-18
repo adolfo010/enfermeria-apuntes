@@ -956,38 +956,48 @@ MODO DE PLANIFICACIÓN OBLIGATORIO:
 Antes de redactar preguntas, construí un PLAN DE COBERTURA amplio.
 
 FASE 1 — DESCUBRIMIENTO:
-Identificá muchos objetivos y enfoques de evaluación realmente desarrollados en la fuente. Buscá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita.
-IMPORTANTE: objetivos relacionados NO son automáticamente duplicados. Un mismo tema puede y debe poder evaluarse desde perspectivas diferentes: definición, función, característica, identificación, relación, aplicación, consecuencia, comparación, etc.
+Identificá muchos objetivos y ENFOQUES EVALUATIVOS realmente desarrollados en la fuente. Buscá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita.
+Para cada candidato distinguí:
+- objetivo principal;
+- perspectiva evaluativa: qué aspecto diferente se estaría evaluando;
+- evidencia concreta de la fuente;
+- subtema;
+- categoría cognitiva;
+- bloque conceptual.
 
-FASE 2 — AGRUPAMIENTO Y SELECCIÓN:
-Agrupá los candidatos por bloque conceptual únicamente para conocer su distribución. NO elimines automáticamente los candidatos que pertenezcan al mismo bloque.
-Seleccioná EXACTAMENTE ${count} objetivos/perspectivas cuando existan suficientes contenidos defendibles.
-Dentro de un mismo tema o bloque podés seleccionar varias perspectivas si realmente cambian el enfoque de evaluación.
+IMPORTANTE: un mismo tema puede producir varias preguntas válidas. No reduzcas artificialmente la variedad por pertenecer al mismo bloque.
+Ejemplo: dentro de "células gliales" pueden coexistir función general, protección, fijación, metabolismo, tipos celulares y relación con mielina porque representan perspectivas diferentes.
 
-Ejemplo válido:
-- objetivo A: función general de la glía
-- objetivo B: protección física y química
-- objetivo C: fijación de neuronas
-Aunque estén relacionados con el mismo tema, pueden coexistir porque evalúan aspectos diferentes.
+FASE 2 — SELECCIÓN:
+Seleccioná EXACTAMENTE ${count} candidatos cuando existan suficientes.
+La selección debe maximizar la diversidad de PERSPECTIVAS EVALUATIVAS, no obligatoriamente la diversidad de temas.
+No selecciones dos candidatos si ambos preguntan esencialmente lo mismo y tienen la misma respuesta central.
+Sí podés seleccionar dos o más candidatos del mismo tema si:
+- cambia el objetivo principal;
+- cambia la perspectiva evaluativa;
+- cambia la relación, función, característica o aplicación evaluada.
 
-Ejemplo que debe evitarse:
-- "las glías protegen"
-- "las glías brindan protección"
-si ambas preguntas solo solicitan la misma afirmación.
+Cada objetivo seleccionado debe ser atómico: UNA PREGUNTA = UN OBJETIVO PRINCIPAL.
+No combines dos objetivos independientes dentro de una misma pregunta salvo que la relación entre ambos sea precisamente el objetivo evaluado.
 
-UNA PREGUNTA = UN OBJETIVO PRINCIPAL, pero un mismo tema puede tener VARIOS objetivos principales diferentes.
+CONTROL DE PERSPECTIVA:
+Para cada candidato asigná una etiqueta perspectiveKey específica, por ejemplo:
+- funcion_general_glia
+- proteccion_fisica_quimica
+- fijacion_neuronas
+- metabolismo_neuronal
+- suministro_nutrientes_oxigeno
+- tipos_glia
+- astrocito
+- oligodendrocito_mielina
+No copies estos ejemplos si no están respaldados por la fuente.
+Dos preguntas pueden compartir el mismo cluster/tema, pero no deben compartir el mismo perspectiveKey salvo que no exista otra perspectiva defendible.
 
-REGLAS DE SELECCIÓN:
-- Priorizá diversidad de enfoques, no simplemente diversidad de temas.
-- No fuerces que cada pregunta corresponda a un tema completamente diferente.
-- Si un tema importante tiene varias características o funciones desarrolladas, es correcto generar varias preguntas sobre él desde perspectivas diferentes.
-- No reduzcas la cantidad solicitada solo porque varios objetivos pertenecen al mismo tema.
-- Solo devolvé menos de ${count} si realmente no existen ${count} objetivos/perspectivas defendibles en todo el contenido seleccionado.
-- No inventes variedad ni uses conocimiento externo.
-- Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
+Si hay suficientes candidatos, el plan DEBE contener ${count} objetivos. Solo puede contener menos si realmente no existen ${count} perspectivas evaluativas defendibles en todo el contenido seleccionado.
+No inventes variedad ni uses conocimiento externo. Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
 
 El plan debe tener esta estructura:
-{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
+{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","perspectiveKey":"perspectiva evaluativa específica","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}
 
 No redactes preguntas en esta fase. Devolvé ÚNICAMENTE JSON válido.
 
