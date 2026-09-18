@@ -168,6 +168,9 @@
   .index-topic .topic-page{font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;}
   .index-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
   .index-empty{padding:24px;text-align:center;color:var(--muted);}
+  .index-badge{font-family:var(--font-mono);font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--good-soft);color:var(--good);white-space:nowrap;}
+  .index-badge.pending{background:var(--warn-soft);color:var(--warn);}
+  .index-badge.loading{background:var(--surface-2);color:var(--muted);}
 
   .password-field{position:relative;display:flex;align-items:center;}
   .password-field input{width:100%;padding-right:82px !important;}
@@ -1174,6 +1177,43 @@
     });
   }
 
+  var indexStatusRenderToken = 0;
+
+  function markIndexStatuses(files){
+    var token = ++indexStatusRenderToken;
+    files.forEach(function(file){
+      var row = els.results.querySelector('.result[data-id="' + CSS.escape(file.id) + '"]');
+      if(!row) return;
+      var meta = row.querySelector(".meta");
+      if(meta) meta.insertAdjacentHTML("beforeend", '<div class="rsub index-status" data-index-status-for="' + escapeHtml(file.id) + '">Consultando índice…</div>');
+    });
+    Promise.all(files.map(function(file){
+      return callDrive({action:"indexStatus",fileId:file.id}).then(function(data){ return {file:file,data:data}; }).catch(function(){ return {file:file,data:null}; });
+    })).then(function(items){
+      if(token !== indexStatusRenderToken) return;
+      items.forEach(function(item){
+        var data=item.data, file=item.file;
+        var row=els.results.querySelector('.result[data-id="' + CSS.escape(file.id) + '"]');
+        if(!row) return;
+        var status=row.querySelector(".index-status");
+        if(!status) return;
+        if(data && data.index){
+          status.className="index-badge";
+          status.textContent="📑 Índice generado";
+          status.title="Índice disponible para este archivo. Se reutiliza al generar resúmenes y preguntas por tema.";
+        }else if(data && data.job && ["pending","running","paused"].indexOf(data.job.status)>=0){
+          status.className="index-badge pending";
+          status.textContent=data.job.status==="paused" ? "⏸ Índice pausado" : "⏳ Indexando…";
+          status.title="La indexación de este material todavía está en proceso.";
+        }else{
+          status.className="rsub index-status";
+          status.textContent="Sin índice";
+          status.title="Todavía no se generó un índice para este archivo."; 
+        }
+      });
+    });
+  }
+
   function renderResults(files){
     if (!files || !files.length){
       els.results.innerHTML = '<div class="empty-state"><div class="big">∅</div>Sin resultados. Probá con otro término.</div>';
@@ -1201,6 +1241,7 @@
     els.results.innerHTML = html;
     var byId = {}; files.forEach(function(f){ byId[f.id] = f; });
     renderMultiSelectBar();
+    markIndexStatuses(files);
 
     Array.prototype.forEach.call(els.results.querySelectorAll(".sel-check"), function(cb){
       cb.addEventListener("click", function(e){ e.stopPropagation(); });
