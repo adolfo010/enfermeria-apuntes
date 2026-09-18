@@ -1139,7 +1139,28 @@ Devolvé ÚNICAMENTE JSON válido:
         if(!coveragePlan?.objectives || !Array.isArray(coveragePlan.objectives)) {
           throw new Error("El plan de cobertura no tiene un formato válido.");
         }
-        coveragePlan.objectives = coveragePlan.objectives.slice(0, count);
+        // Conservar hasta 3x candidatos en memoria: la generación recibe únicamente
+        // los objetivos seleccionados, pero nunca se queda corta por truncamiento prematuro.
+        const rawObjectives = coveragePlan.objectives.filter((o:any) =>
+          o?.objective && o?.centralFact && o?.sourceBasis
+        );
+        const selectedObjectives:any[] = [];
+        const normalizeFact = (s:any) => normalizeForTopic(String(s || ""));
+        const factWords = (s:any) => new Set(normalizeFact(s).split(" ").filter((w:string)=>w.length>=4));
+        const factSimilarity = (a:any,b:any) => {
+          const A=factWords(a), B=factWords(b); if(!A.size||!B.size) return 0;
+          let inter=0; for(const x of A) if(B.has(x)) inter++;
+          return inter/(A.size+B.size-inter);
+        };
+        for(const o of rawObjectives){
+          if(selectedObjectives.length>=count) break;
+          const duplicate = selectedObjectives.some((x:any) =>
+            normalizeFact(x.centralFact)===normalizeFact(o.centralFact) ||
+            factSimilarity(x.centralFact,o.centralFact)>=0.82
+          );
+          if(!duplicate) selectedObjectives.push(o);
+        }
+        coveragePlan.objectives = selectedObjectives.slice(0,count);
 
         const plannedObjectives = coveragePlan.objectives.map((o:any, i:number) =>
           `${i + 1}. [${o?.category || "otro"}] objetivo: ${o?.objective || ""} | centralFact: ${o?.centralFact || ""} | perspectiva: ${o?.perspectiveKey || ""} | bloque: ${o?.cluster || ""} | evidencia: ${o?.sourceBasis || ""}`
