@@ -820,6 +820,13 @@ REGLAS ESTRICTAS:
         const sourceText = extracted.map(x => `===== ${x.fileName} =====\n${x.text}`).join("\n\n");
         let filteredSourceText = sourceText;
         if (cleanTopic) {
+          // Si el tema coincide con el nombre raíz del documento, todos los fragmentos
+          // seleccionados pertenecen al tema. No aplicar extracción por encabezado aquí:
+          // cada bloque puede repetir el encabezado raíz y el filtro determinístico podría
+          // quedarse accidentalmente solo con el primer bloque.
+          if (isDocumentRootTopic(cleanTopic, filesInput[0]?.fileName || "")) {
+            filteredSourceText = sourceText;
+          } else {
           // Primero intentamos una extracción determinística por capítulo.
           // Esto evita que el modelo vuelva a incorporar capítulos ajenos cuando
           // el material tiene encabezados de nivel 1 claramente delimitados.
@@ -854,6 +861,7 @@ ${sourceText}`;
             return cors(new Response(JSON.stringify({ok:true, summary:`No se encontró información suficiente y específica sobre "${cleanTopic}" en los apuntes seleccionados.`}), {headers:{"Content-Type":"application/json"}}));
           }
           filteredSourceText = ft;
+          }
           }
         }
 
