@@ -138,6 +138,16 @@
   .summary-control .scale-label{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;}
   .summary-control input[type=range]{width:100%;accent-color:var(--accent);}
   @media (max-width:600px){.summary-controls{grid-template-columns:1fr;}}
+  .exam-controls{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);}
+  .exam-controls label{font-size:12.5px;font-weight:600;color:var(--muted);}
+  .exam-controls select{font:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);}
+  .question-card{padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-top:10px;}
+  .question-card .q-number{font-family:var(--font-mono);font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .question-card .q-text{font-weight:600;line-height:1.45;}
+  .question-options{margin:9px 0 0;padding-left:22px;line-height:1.6;}
+  .question-answer{margin-top:10px;padding:10px;border-radius:8px;background:var(--good-soft);}
+  .question-answer strong{display:block;margin-bottom:4px;}
+  @media (max-width:600px){.exam-controls{grid-template-columns:1fr;}}
   .summary-scroll{max-height:430px;overflow:auto;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   .password-field{position:relative;display:flex;align-items:center;}
@@ -432,7 +442,18 @@
       '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
       '<button type="button" class="ghost" id="summarizeBtn">Generar resumen con IA ✨</button>' +
     '</div>' +
-    '<div id="summaryResult"></div>';
+    '<div class="summarize-row" style="margin-top:8px;">' +
+      '<button type="button" id="examBtn">Generar preguntas de examen 📝</button>' +
+    '</div>' +
+    '<div id="examControls" class="exam-controls" style="display:none;">' +
+      '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
+      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option>Opción múltiple">Opción múltiple</option><option>Verdadero/Falso">Verdadero / Falso</option><option>Respuesta corta">Respuesta corta</option><option>Desarrollo">Desarrollo</option><option>Caso clínico">Caso clínico</option></select></div>' +
+      '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
+      '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
+      '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+    '</div>' +
+    '<div id="summaryResult"></div>' +
+    '<div id="examResult"></div>';
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
@@ -475,6 +496,51 @@
       var topic = document.getElementById("summarizeTopic").value.trim();
       generateSummary([file], topic, box);
     });
+    document.getElementById("examBtn").addEventListener("click", function(){
+      var controls=document.getElementById("examControls");
+      controls.style.display=controls.style.display==="none" ? "grid" : "none";
+    });
+    document.getElementById("generateExamBtn").addEventListener("click", function(){
+      var topic=document.getElementById("summarizeTopic").value.trim();
+      generateQuestions([file], topic, document.getElementById("examResult"),
+        Number(document.getElementById("examCount").value),
+        document.getElementById("examType").value,
+        Number(document.getElementById("examDifficulty").value),
+        document.getElementById("examAnswers").checked);
+    });
+  }
+
+  function generateQuestions(chosen, topic, targetEl, count, type, difficulty, includeAnswers){
+    var target=targetEl || els.preview;
+    if(!chosen || !chosen.length) return;
+    var btn=document.getElementById("generateExamBtn");
+    if(btn){btn.disabled=true;btn.textContent="Generando examen…";}
+    target.innerHTML='<div class="preview-title">Preguntas de examen</div><div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Preparando preguntas a partir del material…</div>';
+    var files=chosen.map(function(f){return {fileId:f.id,mimeType:f.mimeType||"application/octet-stream",fileName:f.name};});
+    callDrive({action:"generateQuestions",files:files,topic:(topic||"").trim(),questionCount:count,questionType:type,difficulty:difficulty,includeAnswers:includeAnswers})
+      .then(function(payload){
+        var qs=payload && payload.questions;
+        if(!Array.isArray(qs)||!qs.length) throw new Error("La IA no devolvió preguntas.");
+        var html='<div class="preview-title">Preguntas de examen</div>';
+        html+='<div class="preview-path">'+escapeHtml(chosen.map(function(f){return f.name;}).join(" · "))+'</div>';
+        if(topic) html+='<div class="banner info" style="margin-top:10px;">Tema: <strong>'+escapeHtml(topic)+'</strong></div>';
+        qs.forEach(function(q,idx){
+          html+='<div class="question-card"><div class="q-number">PREGUNTA '+(idx+1)+' · '+escapeHtml(q.type||type)+'</div>';
+          html+='<div class="q-text">'+escapeHtml(q.question||"")+'</div>';
+          if(Array.isArray(q.options)&&q.options.length){
+            html+='<ol class="question-options" type="A">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>';
+          }
+          if(includeAnswers){
+            html+='<div class="question-answer"><strong>Respuesta</strong>'+escapeHtml(q.correctAnswer||"")+(q.explanation?'<div style="margin-top:6px;"><strong>Explicación</strong>'+escapeHtml(q.explanation)+'</div>':"")+'</div>';
+          }
+          html+='</div>';
+        });
+        target.innerHTML=html;
+      })
+      .catch(function(err){
+        target.innerHTML='<div class="preview-title">Preguntas de examen</div><div class="banner danger" style="margin-top:10px;">No se pudo generar el examen ('+escapeHtml(err.message||"error")+').</div>';
+      })
+      .finally(function(){if(btn){btn.disabled=false;btn.textContent="Generar examen";}});
   }
 
   function friendlyDeleteError(err){
