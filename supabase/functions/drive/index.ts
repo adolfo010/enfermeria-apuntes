@@ -1438,7 +1438,43 @@ Devolvé ÚNICAMENTE un JSON válido con esta estructura:
           const repairRes = await fetchWithTimeout("https://api.openai.com/v1/responses", {
             method:"POST",
             headers:{ Authorization:`Bearer ${OPENAI_API_KEY}`, "Content-Type":"application/json" },
-            body:JSON.stringify({ model:OPENAI_MODEL, input:[{role:"user",content:repairParts}], max_output_tokens:7000 }),
+            body:JSON.stringify({
+              model:OPENAI_MODEL,
+              input:[{role:"user",content:repairParts}],
+              max_output_tokens:7000,
+              text:{
+                format:{
+                  type:"json_schema",
+                  name:"exam_questions",
+                  description:"Preguntas de examen basadas exclusivamente en los archivos adjuntos y en el plan de cobertura.",
+                  strict:true,
+                  schema:{
+                    type:"object",
+                    properties:{
+                      questions:{
+                        type:"array",
+                        items:{
+                          type:"object",
+                          properties:{
+                            number:{type:"integer"},
+                            type:{type:"string"},
+                            coverageKey:{type:"string"},
+                            question:{type:"string"},
+                            options:{type:"array",items:{type:"string"}},
+                            correctAnswer:{type:"string"},
+                            explanation:{type:"string"}
+                          },
+                          required:["number","type","coverageKey","question","options","correctAnswer","explanation"],
+                          additionalProperties:false
+                        }
+                      }
+                    },
+                    required:["questions"],
+                    additionalProperties:false
+                  }
+                }
+              }
+            }),
           }, OPENAI_TIMEOUT_MS);
           const repairJson = await repairRes.json();
           await recordOpenAIUsage(repairJson, { user, action: "generateQuestions", stage: "repair", topic: cleanTopic, files: filesInput });
