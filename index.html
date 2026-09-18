@@ -499,7 +499,7 @@
     bar.innerHTML =
       '<span class="count">' + ids.length + (ids.length === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
       '<input type="text" id="multiTopic" placeholder="Tema a buscar' + (ids.length > 1 ? ' en estos archivos' : '') + ' — ej: huesos de la mano">' +
-      '<button type="button" id="multiSummarizeBtn">Armar prompt para ChatGPT ✨</button>' +
+      '<button type="button" id="multiSummarizeBtn">Generar resumen con IA ✨</button>' +
       '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>';
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
@@ -508,7 +508,7 @@
     document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
       var topic = document.getElementById("multiTopic").value.trim();
       var chosen = lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      showChatGptPrompt(chosen, topic, els.preview);
+      generateSummary(chosen, topic, els.preview);
     });
   }
 
@@ -531,6 +531,51 @@
         ? "Armá UN solo resumen combinado de todos los archivos adjuntos, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en los archivos."
         : "Resumí el archivo adjunto, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en el archivo.");
     return intro + tarea;
+  }
+
+  function generateSummary(chosen, topic, targetEl){
+    var target = targetEl || els.preview;
+    if (!chosen || !chosen.length) return;
+    var cleanTopic = (topic || "").trim();
+    var btn = document.getElementById("multiSummarizeBtn");
+    if (btn){ btn.disabled = true; btn.textContent = "Generando resumen…"; }
+    target.innerHTML =
+      '<div class="preview-title">Resumen con IA</div>' +
+      '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
+      '<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Analizando el material y preparando el resumen…</div>';
+    var files = chosen.map(function(f){
+      return { fileId:f.id, mimeType:f.mimeType || "application/octet-stream", fileName:f.name };
+    });
+    callDrive({ action:"summarize", files:files, topic:cleanTopic })
+      .then(function(payload){
+        var summary = payload && payload.summary ? payload.summary : "";
+        if (!summary) throw new Error("La IA no devolvió un resumen.");
+        target.innerHTML =
+          '<div class="preview-title">Resumen con IA</div>' +
+          '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
+          (cleanTopic ? '<div class="banner info" style="margin-top:10px;">Tema solicitado: <strong>' + escapeHtml(cleanTopic) + '</strong></div>' : '') +
+          '<div id="summaryText" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(summary) + '</div>' +
+          '<div class="summarize-row" style="margin-top:14px;">' +
+            '<button type="button" id="copySummaryBtn">Copiar resumen 📋</button>' +
+          '</div>' +
+          '<div id="copySummaryMsg" class="muted" style="margin-top:6px;font-size:13px;"></div>';
+        target.querySelector("#copySummaryBtn").addEventListener("click", function(){
+          copyToClipboard(summary).then(function(ok){
+            target.querySelector("#copySummaryMsg").textContent = ok
+              ? "Resumen copiado ✓"
+              : "No se pudo copiar automáticamente.";
+          });
+        });
+      })
+      .catch(function(err){
+        target.innerHTML =
+          '<div class="preview-title">Resumen con IA</div>' +
+          '<div class="banner danger" style="margin-top:10px;">No se pudo generar el resumen (' + escapeHtml(err.message || "error") + ').</div>' +
+          '<div style="margin-top:10px;color:var(--muted);font-size:14px;">Probá nuevamente o seleccioná menos material.</div>';
+      })
+      .finally(function(){
+        if (btn){ btn.disabled = false; btn.textContent = "Generar resumen con IA ✨"; }
+      });
   }
 
   function fallbackCopy(text){
