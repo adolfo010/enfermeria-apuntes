@@ -525,10 +525,23 @@ async function runIndexJob(jobId:number,user:{id:string;email?:string;role:strin
    const fr=await fetchWithTimeout("https://api.openai.com/v1/files",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`},body:form},OPENAI_TIMEOUT_MS);const fj=await fr.json();if(!fr.ok)throw new Error(fj?.error?.message||"No se pudo enviar el bloque del índice a OpenAI");
    try{
     await assertAiBudget();
-    const prompt=`Analizá ÚNICAMENTE este fragmento y construí un ÍNDICE TEMÁTICO, no un resumen. Detectá temas y subtemas realmente presentes. Usá títulos y terminología del material. No inventes temas ni completes con conocimiento externo. Evitá duplicados. Indicá la jerarquía mediante "parent". Devolvé SOLO JSON válido: {"topics":[{"title":"Tema","parent":"","kind":"topic"},{"title":"Subtema","parent":"Tema","kind":"subtopic"}]}. Si no hay temas: {"topics":[]}`;
-    const rr=await fetchWithTimeout("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:OPENAI_MODEL,input:[{role:"user",content:[{type:"input_text",text:`Fragmento: ${name}`},{type:"input_file",file_id:fj.id},{type:"input_text",text:prompt}]}],max_output_tokens:1400})},OPENAI_TIMEOUT_MS);
-    const rj=await rr.json();await recordOpenAIUsage(rj,{user,action:"index",stage:"topics",topic:job.file_name,files:[{fileName:job.file_name}]});if(!rr.ok)throw new Error(rj?.error?.message||"Error al generar el índice");
-    topics=mergeIndexTopics(topics,parseJsonObject((rj.output||[]).flatMap((o:any)=>o.content||[]).map((p:any)=>p.text||"").join("").trim())?.topics||[],ps,pe);
+    const prompt=`Analizá VISUAL Y TEXTUALMENTE ÚNICAMENTE las páginas del archivo PDF adjunto. Construí un ÍNDICE TEMÁTICO del contenido que realmente aparece en estas páginas. NO hagas un resumen. Identificá encabezados, capítulos, unidades, sistemas, órganos, conceptos y subtemas que estén efectivamente presentes. Conservá la terminología del material. NO inventes, no completes con conocimiento externo y no agregues temas solo porque sean habituales en la materia. Si una página contiene texto escaneado o imágenes, inspeccioná igualmente su contenido visible. Devolvé exclusivamente el objeto JSON solicitado.
+REGLAS:
+- "title" debe ser el nombre del tema o subtema tal como aparece o se desprende directamente del material.
+- "parent" debe ser el tema padre; para temas principales usar cadena vacía.
+- No repitas el mismo tema dentro del fragmento.
+- Incluí varios temas cuando las páginas contengan varios apartados.
+- Si el fragmento no contiene contenido académico identificable, devolvé topics=[].
+- Un bloque vacío NO es un error: puede corresponder a portada, índice, separadores o páginas sin contenido académico.`;
+    const makeIndexResponse=async(promptText:string,maxTokens:number)=>await fetchWithTimeout("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:OPENAI_MODEL,input:[{role:"user",content:[{type:"input_text",text:"Archivo: "+name},{type:"input_file",file_id:fj.id},{type:"input_text",text:promptText}]}],text:{format:{type:"json_schema",name:"topic_index",description:"Índice temático extraído exclusivamente del PDF adjunto.",strict:true,schema:{type:"object",properties:{topics:{type:"array",items:{type:"object",properties:{title:{type:"string"},parent:{type:"string"}},required:["title","parent"],additionalProperties:false}}},required:["topics"],additionalProperties:false}}},max_output_tokens:maxTokens})},OPENAI_TIMEOUT_MS);
+    const rr=await makeIndexResponse(prompt,1800);
+    const rj=await rr.json();
+    await recordOpenAIUsage(rj,{user,action:"index",stage:"topics",topic:job.file_name,files:[{fileName:job.file_name}]});
+    if(!rr.ok)throw new Error(rj?.error?.message||"Error al generar el índice");
+    const rawIndexText=String(rj.output_text||((rj.output||[]).flatMap((o)=>o.content||[]).map((p)=>p.text||"").join(""))||"").trim();
+    const parsed=parseJsonObject(rawIndexText);
+    const incoming=Array.isArray(parsed?.topics)?parsed.topics:[];
+    if(incoming.length>0) topics=mergeIndexTopics(topics,incoming,ps,pe);
    }finally{try{await fetch(`https://api.openai.com/v1/files/${fj.id}`,{method:"DELETE",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`}});}catch(_){}}
    await rest(`ai_index_jobs?id=eq.${jobId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({next_chunk:current+1,processed_pages:pe,topics,updated_at:new Date().toISOString(),error_message:null})});
   }
@@ -791,7 +804,7 @@ REGLAS ESTRICTAS:
 
             if (cleanTopic && extractedText === "NO_RELEVANT_CONTENT") continue;
             if (extractedText) extracted.push({
-              fileName: pdfChunks.length > 1 ? chunkName : (f.fileName || "apunte"),
+              fileName: allPdfChunks.length > 1 ? chunkName : (f.fileName || "apunte"),
               text: extractedText
             });
           }
