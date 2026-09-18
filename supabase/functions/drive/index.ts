@@ -951,7 +951,15 @@ Tipo solicitado: ${type}.
 Dificultad: ${difficultyText}.
 ${cleanTopic ? `Tema específico: "${cleanTopic}". Las preguntas deben centrarse en ese tema.` : "Si no se indicó tema, cubrí los conceptos relevantes del material."}
 No inventes datos, conceptos, tratamientos, valores ni definiciones que no aparezcan en los archivos.
-Las preguntas deben ser claras, académicas y variadas cuando corresponda.
+Las preguntas deben ser claras, académicas y variadas. Evitá repetir la misma idea con distinta redacción. Distribuí las preguntas entre los distintos subtemas realmente presentes en la fuente, cuando haya suficiente contenido para hacerlo.
+REGLAS DE CALIDAD:
+- No hagas dos o más preguntas que evalúen esencialmente el mismo dato.
+- No uses como distractores afirmaciones absurdas o claramente ajenas al tema; los distractores deben ser plausibles y estar basados en conceptos presentes en el material, sin alterar su significado.
+- Si el tipo solicitado es "Mixto", combiná opción múltiple, verdadero/falso, respuesta breve y relación de conceptos cuando el material lo permita.
+- En "relación de conceptos", presentá relaciones concretas entre varias estructuras/conceptos y sus funciones o características, y hacé que el estudiante deba identificar la combinación correcta.
+- Priorizá comprensión y aplicación del contenido por sobre la memorización de frases literales, especialmente en dificultades 3 a 5.
+- Si el tema seleccionado tiene subtemas, cubrí esos subtemas sin salir del árbol temático seleccionado.
+- La respuesta correcta y la explicación deben estar respaldadas por el material enviado.
 Devolvé ÚNICAMENTE un JSON válido con esta estructura:
 {"questions":[{"number":1,"type":"...","question":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}
 Para preguntas que no sean de opción múltiple, options debe ser [].
