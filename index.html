@@ -430,11 +430,23 @@
       },
       body: JSON.stringify(payload),
       signal: signal
-    }).then(function(res){
-      return res.json().then(function(json){
-        if (!res.ok) { var e = new Error(json.error || "error"); e.status = res.status; throw e; }
-        return json;
-      });
+    }).then(async function(res){
+      var text = "";
+      try { text = await res.text(); } catch(_e) {}
+      var json = null;
+      try { json = text ? JSON.parse(text) : null; } catch(_e) {}
+      if (!res.ok) {
+        var msg = (json && (json.error || json.message)) || text || ("HTTP " + res.status);
+        var e = new Error(String(msg).trim() || ("HTTP " + res.status));
+        e.status = res.status;
+        throw e;
+      }
+      if (!json) {
+        var e = new Error("La función respondió sin un JSON válido (HTTP " + res.status + ").");
+        e.status = res.status;
+        throw e;
+      }
+      return json;
     });
   }
 
