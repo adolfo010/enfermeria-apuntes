@@ -132,6 +132,12 @@
   #catalogMsg{font-size:13px;}
   .summarize-row{display:flex;gap:8px;margin-top:12px;}
   .summarize-row input{flex:1;min-width:0;font-family:var(--font-body);font-size:14.5px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
+  .summary-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);}
+  .summary-control{display:flex;flex-direction:column;gap:5px;}
+  .summary-control label{font-size:13px;font-weight:600;}
+  .summary-control .scale-label{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;}
+  .summary-control input[type=range]{width:100%;accent-color:var(--accent);}
+  @media (max-width:600px){.summary-controls{grid-template-columns:1fr;}}
   .summary-scroll{max-height:430px;overflow:auto;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   .password-field{position:relative;display:flex;align-items:center;}
@@ -501,16 +507,41 @@
     bar.innerHTML =
       '<span class="count">' + ids.length + (ids.length === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
       '<input type="text" id="multiTopic" placeholder="Tema a buscar' + (ids.length > 1 ? ' en estos archivos' : '') + ' — ej: huesos de la mano">' +
+      '<div class="summary-controls" style="flex-basis:100%;">' +
+        '<div class="summary-control">' +
+          '<label for="summaryLevel">Nivel de resumen <strong id="summaryLevelValue">3 — Equilibrado</strong></label>' +
+          '<input type="range" id="summaryLevel" min="1" max="5" step="1" value="3">' +
+          '<div class="scale-label"><span>Breve</span><span>Muy detallado</span></div>' +
+        '</div>' +
+        '<div class="summary-control">' +
+          '<label for="technicalLevel">Nivel de tecnicismo <strong id="technicalLevelValue">3 — Académico</strong></label>' +
+          '<input type="range" id="technicalLevel" min="1" max="5" step="1" value="3">' +
+          '<div class="scale-label"><span>Introductorio</span><span>Profesional</span></div>' +
+        '</div>' +
+      '</div>' +
       '<button type="button" id="multiSummarizeBtn">Generar resumen con IA ✨</button>' +
       '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>';
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
       renderResults(lastSearchResults);
     });
+    function updateSummaryControls(){
+      var levels=["Breve","Breve","Equilibrado","Detallado","Muy detallado"];
+      var tech=["Introductorio","Básico","Académico","Técnico","Profesional"];
+      var sl=document.getElementById("summaryLevel"), tl=document.getElementById("technicalLevel");
+      if(sl) document.getElementById("summaryLevelValue").textContent=sl.value+" — "+levels[Number(sl.value)-1];
+      if(tl) document.getElementById("technicalLevelValue").textContent=tl.value+" — "+tech[Number(tl.value)-1];
+    }
+    document.getElementById("summaryLevel").addEventListener("input", updateSummaryControls);
+    document.getElementById("technicalLevel").addEventListener("input", updateSummaryControls);
+    updateSummaryControls();
+
     document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
       var topic = document.getElementById("multiTopic").value.trim();
       var chosen = lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      generateSummary(chosen, topic, els.preview);
+      var summaryLevel = Number(document.getElementById("summaryLevel").value) || 3;
+      var technicalLevel = Number(document.getElementById("technicalLevel").value) || 3;
+      generateSummary(chosen, topic, els.preview, summaryLevel, technicalLevel);
     });
   }
 
@@ -535,10 +566,12 @@
     return intro + tarea;
   }
 
-  function generateSummary(chosen, topic, targetEl){
+  function generateSummary(chosen, topic, targetEl, summaryLevel, technicalLevel){
     var target = targetEl || els.preview;
     if (!chosen || !chosen.length) return;
     var cleanTopic = (topic || "").trim();
+    summaryLevel = Number(summaryLevel) || 3;
+    technicalLevel = Number(technicalLevel) || 3;
     var btn = document.getElementById("multiSummarizeBtn");
     if (btn){ btn.disabled = true; btn.textContent = "Generando resumen…"; }
     target.innerHTML =
@@ -548,7 +581,7 @@
     var files = chosen.map(function(f){
       return { fileId:f.id, mimeType:f.mimeType || "application/octet-stream", fileName:f.name };
     });
-    callDrive({ action:"summarize", files:files, topic:cleanTopic })
+    callDrive({ action:"summarize", files:files, topic:cleanTopic, summaryLevel:summaryLevel, technicalLevel:technicalLevel })
       .then(function(payload){
         var summary = payload && payload.summary ? payload.summary : "";
         if (!summary) throw new Error("La IA no devolvió un resumen.");
