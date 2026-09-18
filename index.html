@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Enfermería Roxy</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.svg">
@@ -131,6 +132,7 @@
   #catalogMsg{font-size:13px;}
   .summarize-row{display:flex;gap:8px;margin-top:12px;}
   .summarize-row input{flex:1;min-width:0;font-family:var(--font-body);font-size:14.5px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
+  .summary-scroll{max-height:430px;overflow:auto;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
   .password-field{position:relative;display:flex;align-items:center;}
   .password-field input{width:100%;padding-right:82px !important;}
@@ -554,13 +556,23 @@
           '<div class="preview-title">Resumen con IA</div>' +
           '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
           (cleanTopic ? '<div class="banner info" style="margin-top:10px;">Tema solicitado: <strong>' + escapeHtml(cleanTopic) + '</strong></div>' : '') +
-          '<div id="summaryText" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(summary) + '</div>' +
-          '<div class="summarize-row" style="margin-top:14px;"><button type="button" id="copySummaryBtn">Copiar resumen 📋</button></div>' +
+          '<div id="summaryText" class="summary-scroll" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(summary) + '</div>' +
+          '<div class="summarize-row" style="margin-top:14px;flex-wrap:wrap;">' +
+            '<button type="button" id="copySummaryBtn">Copiar resumen 📋</button>' +
+            '<button type="button" class="ghost" id="downloadPdfBtn">Descargar PDF ↓</button>' +
+            '<button type="button" class="ghost" id="downloadWordBtn">Descargar Word ↓</button>' +
+          '</div>' +
           '<div id="copySummaryMsg" style="margin-top:6px;font-size:13px;"></div>';
         target.querySelector("#copySummaryBtn").addEventListener("click", function(){
           copyToClipboard(summary).then(function(ok){
             target.querySelector("#copySummaryMsg").textContent = ok ? "Resumen copiado ✓" : "No se pudo copiar automáticamente.";
           });
+        });
+        target.querySelector("#downloadWordBtn").addEventListener("click", function(){
+          downloadSummaryWord(summary, chosen, cleanTopic);
+        });
+        target.querySelector("#downloadPdfBtn").addEventListener("click", function(){
+          downloadSummaryPdf(summary, chosen, cleanTopic);
         });
       })
       .catch(function(err){
@@ -572,6 +584,51 @@
       .finally(function(){
         if (btn){ btn.disabled = false; btn.textContent = "Generar resumen con IA ✨"; }
       });
+  }
+
+  function safeDownloadName(chosen, topic){
+    var base = topic ? topic : (chosen && chosen.length ? chosen[0].name.replace(/\.[^.]+$/, "") : "resumen");
+    return base.replace(/[^a-z0-9áéíóúüñ _-]/gi, "").trim().replace(/\s+/g, "_").slice(0,80) || "resumen";
+  }
+
+  function downloadSummaryWord(summary, chosen, topic){
+    var title = topic ? "Resumen: " + topic : "Resumen con IA";
+    var names = (chosen || []).map(function(f){ return f.name; }).join(" · ");
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title>' +
+      '<style>body{font-family:Arial,sans-serif;margin:2cm;line-height:1.5;color:#222}h1{font-size:20pt}p.meta{color:#666;font-size:10pt;border-bottom:1px solid #ddd;padding-bottom:10px}.summary{white-space:pre-wrap;font-size:11pt}</style>' +
+      '</head><body><h1>' + escapeHtml(title) + '</h1><p class="meta">' + escapeHtml(names) + '</p><div class="summary">' + escapeHtml(summary) + '</div></body></html>';
+    var blob = new Blob(["\ufeff", html], {type:"application/msword"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = safeDownloadName(chosen, topic) + ".doc";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function downloadSummaryPdf(summary, chosen, topic){
+    if (!window.jspdf || !window.jspdf.jsPDF){
+      alert("No se pudo cargar el generador de PDF. Recargá la página e intentá nuevamente.");
+      return;
+    }
+    var JsPDF = window.jspdf.jsPDF;
+    var doc = new JsPDF({unit:"mm", format:"a4"});
+    var title = topic ? "Resumen: " + topic : "Resumen con IA";
+    var names = (chosen || []).map(function(f){ return f.name; }).join(" · ");
+    var margin = 18, pageWidth = 210, pageHeight = 297, y = 20;
+    doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    var titleLines = doc.splitTextToSize(title, pageWidth - margin*2);
+    doc.text(titleLines, margin, y); y += titleLines.length * 7;
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+    var nameLines = doc.splitTextToSize(names, pageWidth - margin*2);
+    doc.text(nameLines, margin, y); y += nameLines.length * 4 + 6;
+    doc.setFontSize(10.5);
+    var lines = doc.splitTextToSize(summary, pageWidth - margin*2);
+    var lineHeight = 5.3;
+    lines.forEach(function(line){
+      if (y > pageHeight - margin){ doc.addPage(); y = margin; }
+      doc.text(line, margin, y); y += lineHeight;
+    });
+    doc.save(safeDownloadName(chosen, topic) + ".pdf");
   }
 
   function fallbackCopy(text){
