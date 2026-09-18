@@ -272,7 +272,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.11";
+  var APP_VERSION = "0.4.12";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -781,6 +781,7 @@
           '<div class="preview-title">Resumen con IA</div>' +
           '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
           (cleanTopic ? '<div class="banner info" style="margin-top:10px;">Tema solicitado: <strong>' + escapeHtml(cleanTopic) + '</strong></div>' : '') +
+          (payload && payload.debug ? '<div class="banner" style="margin-top:8px;font-size:12px;">Diagnóstico: tema recibido = <strong>' + escapeHtml(payload.debug.topicReceived || '') + '</strong> · filtro determinístico = <strong>' + (payload.debug.deterministicSectionFound ? 'SÍ' : 'NO') + '</strong> · primer encabezado filtrado = <strong>' + escapeHtml(payload.debug.filteredFirstHeading || 'ninguno') + '</strong> · caracteres filtrados = <strong>' + String(payload.debug.filteredChars || 0) + '</strong></div>' : '') +
           '<div id="summaryText" class="summary-scroll" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(summary) + '</div>' +
           '<div class="summarize-row" style="margin-top:14px;flex-wrap:wrap;">' +
             '<button type="button" id="copySummaryBtn">Copiar resumen 📋</button>' +
