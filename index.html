@@ -150,6 +150,25 @@
   @media (max-width:600px){.exam-controls{grid-template-columns:1fr;}}
   .summary-scroll{max-height:430px;overflow:auto;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+
+  .index-modal{position:fixed;inset:0;background:rgba(26,20,23,.48);display:none;align-items:center;justify-content:center;padding:20px;z-index:1100;}
+  .index-modal.open{display:flex;}
+  .index-card{width:min(820px,100%);max-height:90vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;}
+  .index-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .index-head h2{margin:0 0 4px;font-size:20px;}
+  .index-sub{color:var(--muted);font-size:13px;}
+  .index-progress{margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);}
+  .index-progress-row{display:flex;justify-content:space-between;gap:10px;font-size:13px;}
+  .index-topics{margin-top:12px;border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:52vh;background:var(--surface);}
+  .index-topic{display:flex;align-items:center;gap:9px;padding:9px 11px;border-bottom:1px solid var(--line);}
+  .index-topic:last-child{border-bottom:none;}
+  .index-topic.child{padding-left:30px;}
+  .index-topic input{accent-color:var(--accent);width:16px;height:16px;}
+  .index-topic .topic-name{flex:1;font-size:14px;}
+  .index-topic .topic-page{font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;}
+  .index-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .index-empty{padding:24px;text-align:center;color:var(--muted);}
+
   .password-field{position:relative;display:flex;align-items:center;}
   .password-field input{width:100%;padding-right:82px !important;}
   .toggle-password{position:absolute;right:6px;padding:6px 9px;font-size:12px;border-radius:7px;background:transparent;color:var(--muted);border:1px solid var(--line);}
@@ -241,6 +260,20 @@
     <div id="aiUsageContent">
       <div class="banner info" style="margin-top:16px;"><span class="spin"></span>&nbsp; Consultando consumo…</div>
     </div>
+  </div>
+</div>
+
+
+<div class="index-modal" id="indexModal" aria-hidden="true">
+  <div class="index-card" role="dialog" aria-modal="true" aria-labelledby="indexTitle">
+    <div class="index-head">
+      <div>
+        <h2 id="indexTitle">Índice del material</h2>
+        <div class="index-sub" id="indexSubtitle"></div>
+      </div>
+      <button type="button" class="small ghost" id="closeIndexBtn">Cerrar</button>
+    </div>
+    <div id="indexContent"></div>
   </div>
 </div>
 
@@ -524,6 +557,137 @@
     els.inbox.style.display = "none";
   }
 
+
+  function closeIndexModal(){
+    if(indexPollTimer){clearTimeout(indexPollTimer);indexPollTimer=null;}
+    var modal=document.getElementById("indexModal");
+    if(modal){modal.classList.remove("open");modal.setAttribute("aria-hidden","true");}
+  }
+
+  function scheduleIndexPoll(file, delay){
+    if(indexPollTimer) clearTimeout(indexPollTimer);
+    indexPollTimer=setTimeout(function(){ refreshIndexModal(file); }, delay || 2500);
+  }
+
+  function renderIndexTopics(index){
+    var topics=Array.isArray(index && index.topics) ? index.topics : [];
+    if(!topics.length) return '<div class="index-empty">El índice terminó sin temas identificables en el material.</div>';
+    var html='';
+    topics.forEach(function(t,i){
+      var child=!!(t.parent && String(t.parent).trim());
+      html+='<label class="index-topic '+(child?'child':'')+'">' +
+        '<input type="checkbox" class="index-topic-check" data-index-topic="'+i+'">' +
+        '<span class="topic-name">'+escapeHtml(t.title||"")+(child?' <span style="color:var(--muted);">· '+escapeHtml(t.parent)+'</span>':'')+'</span>' +
+        '<span class="topic-page">pág. '+escapeHtml(String(t.page_start||""))+'–'+escapeHtml(String(t.page_end||""))+'</span>' +
+      '</label>';
+    });
+    return html;
+  }
+
+  function renderIndexModal(file, data){
+    indexFileState={file:file,data:data};
+    var modal=document.getElementById("indexModal"),content=document.getElementById("indexContent");
+    if(!modal||!content)return;
+    modal.classList.add("open");modal.setAttribute("aria-hidden","false");
+    document.getElementById("indexTitle").textContent="Índice del material";
+    document.getElementById("indexSubtitle").textContent=file.name||"";
+    var idx=data && data.index, job=data && data.job;
+    var html='';
+    if(idx){
+      html+='<div class="banner info" style="margin-top:14px;">🟢 Índice disponible · '+escapeHtml(String(idx.topics?.length||0))+' temas/subtemas · '+escapeHtml(String(idx.page_count||0))+' páginas.</div>';
+      html+='<div class="index-topics">'+renderIndexTopics(idx)+'</div>';
+      html+='<div class="muted" style="font-size:12px;margin-top:8px;">Seleccioná un solo tema y generá el resumen. El índice queda guardado para volver a utilizarlo.</div>';
+      html+='<div class="index-actions"><button type="button" id="indexSummarizeSelected">Generar resumen del tema seleccionado ✨</button><button type="button" class="ghost" id="indexRefreshBtn">Actualizar estado</button></div>';
+    }else if(job && (job.status==="running"||job.status==="pending"||job.status==="paused"||job.status==="error")){
+      var total=Number(job.total_pages||0),done=Number(job.processed_pages||0),pct=total?Math.min(100,Math.round(done*100/total)):0;
+      html+='<div class="index-progress"><div class="index-progress-row"><strong>'+ (job.status==="paused"?"⏸ Pausado":job.status==="error"?"⚠ Con error":"⏳ Analizando índice…") +'</strong><span>'+done+' / '+total+' páginas · '+pct+'%</span></div><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%;"></div></div>';
+      if(job.error_message)html+='<div class="banner danger" style="margin-top:10px;">'+escapeHtml(job.error_message)+'</div>';
+      html+='</div>';
+      html+='<div class="index-actions">';
+      if(job.status==="paused"||job.status==="error")html+='<button type="button" id="indexResumeBtn">Continuar</button>';
+      if(job.status==="running"||job.status==="pending")html+='<button type="button" class="ghost" id="indexPauseBtn">Pausar</button>';
+      if(job.status!=="cancelled"&&job.status!=="completed")html+='<button type="button" class="ghost" id="indexCancelBtn">Cancelar</button>';
+      html+='</div>';
+    }else{
+      html+='<div class="banner info" style="margin-top:14px;">Este material todavía no tiene índice. La primera indexación analiza el libro una sola vez y guarda los temas y su ubicación.</div>';
+      html+='<div class="index-actions"><button type="button" id="indexStartBtn">Analizar y crear índice 📑</button></div>';
+    }
+    content.innerHTML=html;
+
+    var checks=content.querySelectorAll(".index-topic-check");
+    checks.forEach(function(ch){ch.addEventListener("change",function(){checks.forEach(function(other){if(other!==ch)other.checked=false;});});});
+
+    var selected=content.querySelector("#indexSummarizeSelected");
+    if(selected)selected.addEventListener("click",function(){
+      var checked=content.querySelector(".index-topic-check:checked");
+      if(!checked){alert("Seleccioná un tema del índice.");return;}
+      var idxPos=Number(checked.getAttribute("data-index-topic"));
+      var topic=(idx.topics||[])[idxPos];
+      closeIndexModal();
+      renderPreview(file);
+      setTimeout(function(){
+        var input=document.getElementById("summarizeTopic");
+        if(input)input.value=topic.title||"";
+        var box=document.getElementById("summaryResult");
+        generateSummary([file],topic.title||"",box);
+      },0);
+    });
+    var start=content.querySelector("#indexStartBtn");
+    if(start)start.addEventListener("click",function(){startIndexForFile(file);});
+    var resume=content.querySelector("#indexResumeBtn");
+    if(resume)resume.addEventListener("click",function(){controlIndex("resume",job.id,file);});
+    var pause=content.querySelector("#indexPauseBtn");
+    if(pause)pause.addEventListener("click",function(){controlIndex("pause",job.id,file);});
+    var cancel=content.querySelector("#indexCancelBtn");
+    if(cancel)cancel.addEventListener("click",function(){if(confirm("¿Cancelar esta indexación? Se conservará el progreso ya realizado."))controlIndex("cancel",job.id,file);});
+    var refresh=content.querySelector("#indexRefreshBtn");
+    if(refresh)refresh.addEventListener("click",function(){refreshIndexModal(file);});
+
+    if(job && (job.status==="running"||job.status==="pending")) scheduleIndexPoll(file,2500);
+  }
+
+  function refreshIndexModal(file){
+    if(!file)return;
+    if(indexPollBusy){scheduleIndexPoll(file,3000);return;}
+    indexPollBusy=true;
+    callDrive({action:"indexStatus",fileId:file.id}).then(function(data){
+      renderIndexModal(file,data);
+      var job=data && data.job;
+      if(job && job.status==="pending"){
+        return callDrive({action:"indexRun",jobId:job.id}).then(function(){scheduleIndexPoll(file,1500);});
+      }
+    }).catch(function(err){
+      var c=document.getElementById("indexContent");
+      if(c)c.innerHTML='<div class="banner danger" style="margin-top:14px;">No se pudo consultar el índice ('+escapeHtml(err.message||"error")+').</div>';
+    }).finally(function(){indexPollBusy=false;});
+  }
+
+  function startIndexForFile(file){
+    var c=document.getElementById("indexContent");
+    if(c)c.innerHTML='<div class="banner info" style="margin-top:14px;"><span class="spin"></span>&nbsp; Preparando la indexación del material…</div>';
+    callDrive({action:"indexStart",fileId:file.id,fileName:file.name,mimeType:file.mimeType||"application/pdf"}).then(function(data){
+      renderIndexModal(file,data);
+      if(data.job) scheduleIndexPoll(file,1200);
+    }).catch(function(err){
+      if(c)c.innerHTML='<div class="banner danger" style="margin-top:14px;">No se pudo iniciar la indexación ('+escapeHtml(err.message||"error")+').</div>';
+    });
+  }
+
+  function controlIndex(control,jobId,file){
+    callDrive({action:"indexControl",control:control,jobId:jobId}).then(function(){refreshIndexModal(file);}).catch(function(err){
+      var c=document.getElementById("indexContent");
+      if(c)c.insertAdjacentHTML("afterbegin",'<div class="banner danger" style="margin-top:10px;">No se pudo cambiar el estado ('+escapeHtml(err.message||"error")+').</div>');
+    });
+  }
+
+  function openIndexForFile(file){
+    var modal=document.getElementById("indexModal"),content=document.getElementById("indexContent");
+    if(!modal||!content)return;
+    modal.classList.add("open");modal.setAttribute("aria-hidden","false");
+    content.innerHTML='<div class="banner info" style="margin-top:14px;"><span class="spin"></span>&nbsp; Consultando índice…</div>';
+    refreshIndexModal(file);
+  }
+
   function renderPreview(file){
     if (!file){
       els.preview.innerHTML = '<div class="empty-state"><div class="big">▢</div>Elegí un resultado para verlo acá.</div>';
@@ -542,7 +706,7 @@
       '<button type="button" id="downloadDriveBtn">Descargar ⬇</button>' +
       '<a href="' + openUrl + '" target="_blank" rel="noopener"><button type="button" class="ghost">Abrir en Drive ↗</button></a>' +
       '<button type="button" class="ghost" id="renameBtn">Renombrar ✎</button>' +
-      '<button type="button" class="ghost" id="deleteBtn">Eliminar 🗑</button>' +
+      '<button type="button" class="ghost" id="deleteBtn">Eliminar 🗑</button><button type="button" class="ghost" id="indexBtn">Índice 📑</button>' +
     '</div>' +
     '<div id="previewActionMsg"></div>' +
     '<div class="summarize-row">' +
@@ -564,6 +728,7 @@
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
+    document.getElementById("indexBtn").addEventListener("click", function(){ openIndexForFile(file); });
 
     document.getElementById("downloadDriveBtn").addEventListener("click", function(){
       downloadDriveFile(file);
@@ -712,6 +877,9 @@
   }
 
   var selectedIds = {};
+  var indexFileState = null;
+  var indexPollTimer = null;
+  var indexPollBusy = false;
 
   function renderMultiSelectBar(){
     var bar = document.getElementById("multiSelectBar");
@@ -1424,6 +1592,9 @@
     var modal=document.getElementById("aiUsageModal");
     modal.classList.remove("open"); modal.setAttribute("aria-hidden","true");
   }
+  document.getElementById("closeIndexBtn").addEventListener("click", closeIndexModal);
+  document.getElementById("indexModal").addEventListener("click", function(e){ if(e.target===this) closeIndexModal(); });
+
   document.getElementById("closeAiUsageBtn").addEventListener("click", closeAiUsageModal);
   document.getElementById("aiUsageModal").addEventListener("click", function(e){ if(e.target===this) closeAiUsageModal(); });
 
