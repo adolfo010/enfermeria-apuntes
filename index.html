@@ -115,6 +115,7 @@
   .banner{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:10px;font-size:14.5px;line-height:1.45;}
   .banner.info{background:var(--surface-2);color:var(--ink);}
   .banner.danger{background:var(--danger-soft);color:var(--danger);}
+  .banner.warn{background:var(--warn-soft);color:var(--warn);}
   .connect-card{display:flex;flex-direction:column;gap:10px;align-items:flex-start;padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);}
   .connect-card p{margin:0;color:var(--muted);font-size:15px;max-width:560px;}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--surface-2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
@@ -842,6 +843,7 @@
          html+='<div class="preview-path">'+escapeHtml(chosen.map(function(f){return f.name;}).join(" · "))+'</div>';
          html+='<div id="examReportScroll" class="summary-scroll" style="max-height:430px;overflow:auto;margin-top:12px;padding-right:8px;">';
          if(topic) html+='<div class="banner info" style="margin-top:10px;">Tema: <strong>'+escapeHtml(topic)+'</strong></div>';
+         if(payload.indexWarning) html+='<div class="banner warn" style="margin-top:10px;">⚠️ '+escapeHtml(payload.indexWarning)+'</div>';
          qs.forEach(function(q,idx){
            html+='<div class="question-card"><div class="q-number">PREGUNTA '+(idx+1)+' · '+escapeHtml(q.type||type)+'</div>';
            html+='<div class="q-text">'+escapeHtml(q.question||"")+'</div>';
@@ -1059,6 +1061,7 @@
           '<div class="preview-title">Resumen con IA</div>' +
           '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
           (cleanTopic ? '<div class="banner info" style="margin-top:10px;">Tema solicitado: <strong>' + escapeHtml(cleanTopic) + '</strong></div>' : '') +
+          (payload && payload.indexWarning ? '<div class="banner warn" style="margin-top:10px;">⚠️ ' + escapeHtml(payload.indexWarning) + '</div>' : '') +
 
           '<div id="summaryText" class="summary-scroll" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(summary) + '</div>' +
           '<div class="summarize-row" style="margin-top:14px;flex-wrap:wrap;">' +

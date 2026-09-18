@@ -751,6 +751,7 @@ REGLAS ESTRICTAS:
       const fileIds: string[] = [];
       try {
         const extracted: { fileName: string; text: string }[] = [];
+        const filesWithoutIndex: string[] = [];
 
         for (const f of filesInput) {
           const content = await getSummarizableContent(f.fileId, f.mimeType, accessToken);
@@ -763,7 +764,20 @@ REGLAS ESTRICTAS:
           // incluso cuando el PDF contiene mucho texto, tablas o imágenes.
           const allPdfChunks=content.mime==="application/pdf"?await splitPdfIntoChunks(content.bytes,3):[content.bytes];
           let selectedChunkIndexes:number[]|null=null;
-          if(cleanTopic){const meta=await getDriveMetaForIndex(f.fileId,accessToken),fp=indexFingerprint(meta),idx=await getCurrentIndex(user.id,f.fileId,fp);if(isDocumentRootTopic(cleanTopic,f.fileName||meta.name||"")){selectedChunkIndexes=allPdfChunks.map((_,i)=>i);}else if(idx&&Array.isArray(idx.topics)){const nt=normalizeForTopic(cleanTopic),set=new Set<number>(),topics=idx.topics as any[];const selected=new Set<string>([nt]);let changed=true;while(changed){changed=false;for(const t of topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(parent&&selected.has(parent)&&!selected.has(title)){selected.add(title);changed=true;}}}for(const t of topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(selected.has(title)||selected.has(parent)){const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(allPdfChunks.length-1,Number(t.chunk_end??a));for(let c=a;c<=b;c++)set.add(c);}}if(set.size)selectedChunkIndexes=Array.from(set).sort((a,b)=>a-b);}}
+          let isRootTopic=false;
+          if(cleanTopic){
+            const meta=await getDriveMetaForIndex(f.fileId,accessToken),fp=indexFingerprint(meta),idx=await getCurrentIndex(user.id,f.fileId,fp);
+            isRootTopic=isDocumentRootTopic(cleanTopic,f.fileName||meta.name||"");
+            if(isRootTopic){
+              selectedChunkIndexes=allPdfChunks.map((_,i)=>i);
+            }else if(idx&&Array.isArray(idx.topics)){
+              const nt=normalizeForTopic(cleanTopic),set=new Set<number>(),topics=idx.topics as any[];const selected=new Set<string>([nt]);let changed=true;
+              while(changed){changed=false;for(const t of topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(parent&&selected.has(parent)&&!selected.has(title)){selected.add(title);changed=true;}}}
+              for(const t of topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(selected.has(title)||selected.has(parent)){const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(allPdfChunks.length-1,Number(t.chunk_end??a));for(let c=a;c<=b;c++)set.add(c);}}
+              if(set.size)selectedChunkIndexes=Array.from(set).sort((a,b)=>a-b);
+            }
+          }
+          if(cleanTopic&&!isRootTopic&&selectedChunkIndexes===null){filesWithoutIndex.push(f.fileName||"apunte");}
           const chunkIndexes=selectedChunkIndexes||allPdfChunks.map((_,i)=>i);
           for(const chunkIndex of chunkIndexes){
             const chunkBytes = allPdfChunks[chunkIndex];
@@ -816,10 +830,14 @@ REGLAS ESTRICTAS:
             });
           }
         }
+        const indexWarning = filesWithoutIndex.length
+          ? `No se encontró índice temático para: ${filesWithoutIndex.join(", ")}. Se analizó el documento completo para buscar el tema, lo que puede tardar más y ser menos preciso. Generá el índice del archivo ("Analizar y crear índice 📑") para acotar la búsqueda la próxima vez.`
+          : undefined;
         if (cleanTopic && extracted.length === 0) {
           return cors(new Response(JSON.stringify({
             ok: true,
-            summary: `No se encontró información suficiente y específica sobre "${cleanTopic}" en los apuntes seleccionados.`
+            summary: `No se encontró información suficiente y específica sobre "${cleanTopic}" en los apuntes seleccionados.`,
+            ...(indexWarning ? { indexWarning } : {})
           }), { headers: { "Content-Type": "application/json" } }));
         }
 
@@ -910,7 +928,7 @@ ${requestedStyle}`;
         const summary = (sj.output || []).flatMap((o: any) => o.content || []).map((p: any) => p.text || "").join("\n").trim();
         if (!summary) throw new Error("OpenAI no devolvió texto para este archivo.");
 
-        return cors(new Response(JSON.stringify({ ok: true, summary }), {
+        return cors(new Response(JSON.stringify({ ok: true, summary, ...(indexWarning ? { indexWarning } : {}) }), {
           headers: { "Content-Type": "application/json" }
         }));
       } finally {
@@ -1018,18 +1036,21 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
 
       const fileIds: string[] = [];
       const fileLabels: string[] = [];
+      const filesWithoutIndex: string[] = [];
       try {
         for (const f of filesInput) {
           const content = await getSummarizableContent(f.fileId, f.mimeType, accessToken);
           if (content.bytes.length > MAX_SUMMARIZE_BYTES) throw new Error("TOO_LARGE");
           const allChunks = content.mime === "application/pdf" ? await splitPdfIntoChunks(content.bytes, 3) : [content.bytes];
           let selectedIndexes: number[] | null = null;
+          let isRootTopic = false;
 
           if (cleanTopic) {
             const meta = await getDriveMetaForIndex(f.fileId, accessToken);
             const fp = indexFingerprint(meta);
             const idx = await getCurrentIndex(user.id, f.fileId, fp);
-            if (isDocumentRootTopic(cleanTopic, f.fileName || meta.name || "")) {
+            isRootTopic = isDocumentRootTopic(cleanTopic, f.fileName || meta.name || "");
+            if (isRootTopic) {
               selectedIndexes = allChunks.map((_, i) => i);
             } else if (idx && Array.isArray(idx.topics)) {
               const nt = normalizeForTopic(cleanTopic);
@@ -1059,6 +1080,9 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
               }
               if (set.size) selectedIndexes = Array.from(set).sort((a,b)=>a-b);
             }
+          }
+          if (cleanTopic && !isRootTopic && selectedIndexes === null) {
+            filesWithoutIndex.push(f.fileName || "apunte");
           }
 
           const indexes = selectedIndexes || allChunks.map((_,i)=>i);
@@ -1487,7 +1511,10 @@ Devolvé ÚNICAMENTE un JSON válido con esta estructura:
           }
         }
 
-        return cors(new Response(JSON.stringify({ok:true, questions:questions.questions}),{headers:{"Content-Type":"application/json"}}));
+        const indexWarning = filesWithoutIndex.length
+          ? `No se encontró índice temático para: ${filesWithoutIndex.join(", ")}. Se analizó el documento completo para buscar el tema, lo que puede tardar más y ser menos preciso. Generá el índice del archivo ("Analizar y crear índice 📑") para acotar la búsqueda la próxima vez.`
+          : undefined;
+        return cors(new Response(JSON.stringify({ok:true, questions:questions.questions, ...(indexWarning ? { indexWarning } : {})}),{headers:{"Content-Type":"application/json"}}));
       } finally {
         for (const id of fileIds) {
           try { await fetch(`https://api.openai.com/v1/files/${id}`,{method:"DELETE",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`}}); } catch(_e){}
