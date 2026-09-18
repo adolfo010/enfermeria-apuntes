@@ -259,6 +259,7 @@
 
   <footer class="note">
     Enfermería Roxy · conectado directo a Google Drive.
+    <div id="appVersion" style="font-family:var(--font-mono);font-size:12px;color:var(--muted);">Versión ${APP_VERSION}</div>
     <div>
       <button type="button" id="catalogBtn">Actualizar catálogo de apuntes ↻</button>
     </div>
@@ -269,6 +270,9 @@
 <script>
 (function(){
   "use strict";
+
+  // Versión visible de la aplicación. Incrementar en cada actualización publicada.
+  var APP_VERSION = "0.4.9";
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
   var ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0d2VtbGVqYW1zbHZzdWxudmFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1NjU3NTAsImV4cCI6MjEwNTE0MTc1MH0.i55VG6JkliuMNnnbINq1I_7fQnMIx1hDMuL3Osbv-1I";
