@@ -508,6 +508,7 @@ function mergeIndexTopics(ex:any[],inc:any[],ps:number,pe:number):any[]{
 }
 async function getDriveMetaForIndex(fileId:string,token:string):Promise<any>{return await driveFetch(`files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,modifiedTime,md5Checksum,webViewLink`,token);}
 function indexFingerprint(meta:any):string{return meta?.md5Checksum?`md5:${meta.md5Checksum}`:`meta:${meta?.modifiedTime||""}|${meta?.size||""}`;}
+function isDocumentRootTopic(topic:string,fileName:string):boolean{const nt=normalizeForTopic(topic),base=String(fileName||"").replace(/\.[^.]+$/,"");const nf=normalizeForTopic(base);return !!nt&&!!nf&&nt===nf;}
 async function getCurrentIndex(uid:string,fid:string,fp:string):Promise<any|null>{const r=await rest(`ai_document_indexes?select=id,user_id,drive_file_id,file_name,file_fingerprint,page_count,topics,model,created_at,updated_at&user_id=eq.${encodeURIComponent(uid)}&drive_file_id=eq.${encodeURIComponent(fid)}&file_fingerprint=eq.${encodeURIComponent(fp)}&limit=1`);if(!r.ok)return null;return (await r.json())?.[0]||null;}
 async function getLatestIndexJob(uid:string,fid:string):Promise<any|null>{const r=await rest(`ai_index_jobs?select=id,user_id,drive_file_id,file_name,mime_type,file_fingerprint,status,total_pages,chunk_pages,total_chunks,next_chunk,processed_pages,topics,error_message,model,created_at,updated_at,completed_at&user_id=eq.${encodeURIComponent(uid)}&drive_file_id=eq.${encodeURIComponent(fid)}&order=updated_at.desc&limit=1`);if(!r.ok)return null;return (await r.json())?.[0]||null;}
 async function runIndexJob(jobId:number,user:{id:string;email?:string;role:string},token:string,initial?:{bytes:Uint8Array;mime:string;tempCopyId:string|null}|null):Promise<void>{
@@ -756,7 +757,7 @@ REGLAS ESTRICTAS:
           // incluso cuando el PDF contiene mucho texto, tablas o imágenes.
           const allPdfChunks=content.mime==="application/pdf"?await splitPdfIntoChunks(content.bytes,3):[content.bytes];
           let selectedChunkIndexes:number[]|null=null;
-          if(cleanTopic){const meta=await getDriveMetaForIndex(f.fileId,accessToken),fp=indexFingerprint(meta),idx=await getCurrentIndex(user.id,f.fileId,fp);if(idx&&Array.isArray(idx.topics)){const nt=normalizeForTopic(cleanTopic),set=new Set<number>();for(const t of idx.topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(title===nt||title.includes(nt)||nt.includes(title)||parent===nt||parent.includes(nt)){const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(allPdfChunks.length-1,Number(t.chunk_end??a));for(let c=a;c<=b;c++)set.add(c);}}if(set.size)selectedChunkIndexes=Array.from(set).sort((a,b)=>a-b);}}
+          if(cleanTopic){const meta=await getDriveMetaForIndex(f.fileId,accessToken),fp=indexFingerprint(meta),idx=await getCurrentIndex(user.id,f.fileId,fp);if(isDocumentRootTopic(cleanTopic,f.fileName||meta.name||"")){selectedChunkIndexes=allPdfChunks.map((_,i)=>i);}else if(idx&&Array.isArray(idx.topics)){const nt=normalizeForTopic(cleanTopic),set=new Set<number>();for(const t of idx.topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(title===nt||title.includes(nt)||nt.includes(title)||parent===nt||parent.includes(nt)){const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(allPdfChunks.length-1,Number(t.chunk_end??a));for(let c=a;c<=b;c++)set.add(c);}}if(set.size)selectedChunkIndexes=Array.from(set).sort((a,b)=>a-b);}}
           const chunkIndexes=selectedChunkIndexes||allPdfChunks.map((_,i)=>i);
           for(const chunkIndex of chunkIndexes){
             const chunkBytes = allPdfChunks[chunkIndex];
@@ -956,7 +957,9 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
             const meta = await getDriveMetaForIndex(f.fileId, accessToken);
             const fp = indexFingerprint(meta);
             const idx = await getCurrentIndex(user.id, f.fileId, fp);
-            if (idx && Array.isArray(idx.topics)) {
+            if (isDocumentRootTopic(cleanTopic, f.fileName || meta.name || "")) {
+              selectedIndexes = allChunks.map((_, i) => i);
+            } else if (idx && Array.isArray(idx.topics)) {
               const nt = normalizeForTopic(cleanTopic);
               const set = new Set<number>();
               for (const t of idx.topics) {
