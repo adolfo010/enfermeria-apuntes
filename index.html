@@ -992,6 +992,7 @@
   window.__supabaseSession = null;
   var currentUserRole = "USER";
   var __appStarted = false;
+  var __appStarting = false;
 
   function showLogin(message){
     document.getElementById("authScreen").style.display = "flex";
@@ -1102,42 +1103,40 @@
 
   async function startAuthenticatedApp(session){
     if (!session || !session.access_token){ showLogin(); return; }
-    window.__supabaseSession = session;
-    var user = session.user;
+    if (__appStarted || __appStarting) return;
+    __appStarting = true;
+    try {
+      window.__supabaseSession = session;
+      var user = session.user;
+      var profileResult = await supabaseClient.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (profileResult.error) throw profileResult.error;
+      applyRoleUI(profileResult.data && profileResult.data.role || "USER", user.email);
 
-    var profileRes = await fetch(
-      SUPABASE_URL + "/rest/v1/profiles?id=eq." + encodeURIComponent(user.id) + "&select=role",
-      {headers:{apikey:ANON_KEY,Authorization:"Bearer " + session.access_token}}
-    );
-    if (!profileRes.ok) throw new Error("No se pudo verificar el perfil");
-    var profiles = await profileRes.json();
-    applyRoleUI(profiles[0] && profiles[0].role || "USER", user.email);
-
-    document.getElementById("authScreen").style.display = "none";
-    document.getElementById("appShell").style.display = "flex";
-
-    if (!__appStarted){
+      document.getElementById("authScreen").style.display = "none";
+      document.getElementById("appShell").style.display = "flex";
       __appStarted = true;
       registerServiceWorker();
-    }
 
-    var params = new URLSearchParams(location.search);
-    var wasShare = params.get("share") === "1";
-    if (params.get("auth") || wasShare) history.replaceState({}, "", location.pathname);
+      var params = new URLSearchParams(location.search);
+      var wasShare = params.get("share") === "1";
+      if (params.get("auth") || wasShare) history.replaceState({}, "", location.pathname);
 
-    try {
-      var oauthRes = await fetch(
-        SUPABASE_URL + "/functions/v1/oauth/status",
-        {headers:{apikey:ANON_KEY,Authorization:"Bearer " + session.access_token}}
-      );
-      var oauthJson = await oauthRes.json();
-      renderConnect(!!oauthJson.connected);
-      if (oauthJson.connected && currentUserRole === "ADMIN"){
-        els.inbox.classList.add("open");
-        if (wasShare) handleSharedFiles(); else checkFacultad();
+      try {
+        var oauthRes = await fetch(
+          SUPABASE_URL + "/functions/v1/oauth/status",
+          {headers:{apikey:ANON_KEY,Authorization:"Bearer " + session.access_token}}
+        );
+        var oauthJson = await oauthRes.json();
+        renderConnect(!!oauthJson.connected);
+        if (oauthJson.connected && currentUserRole === "ADMIN"){
+          els.inbox.classList.add("open");
+          if (wasShare) handleSharedFiles(); else checkFacultad();
+        }
+      } catch (_e) {
+        renderConnect(false);
       }
-    } catch (_e) {
-      renderConnect(false);
+    } finally {
+      __appStarting = false;
     }
   }
 
