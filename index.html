@@ -771,7 +771,22 @@
     document.getElementById("summarizeBtn").addEventListener("click", function(){
       var box = document.getElementById("summaryResult");
       var topic = document.getElementById("summarizeTopic").value.trim();
-      generateSummary([file], topic, box);
+      if(!topic){
+        openIndexForFile(file);
+        return;
+      }
+      callDrive({action:"indexStatus",fileId:file.id}).then(function(data){
+        if(data && data.index){
+          generateSummary([file], topic, box);
+        }else{
+          openIndexForFile(file);
+          var c=document.getElementById("indexContent");
+          if(c) c.insertAdjacentHTML("afterbegin", '<div class="banner info" style="margin-top:14px;">Para este tema conviene crear primero el índice permanente del material. La indexación se guardará y no habrá que repetirla.</div>');
+          if(!data || !data.job) startIndexForFile(file);
+        }
+      }).catch(function(err){
+        box.innerHTML='<div class="banner danger" style="margin-top:10px;">No se pudo consultar el índice ('+escapeHtml(err.message||"error")+').</div>';
+      });
     });
     document.getElementById("examBtn").addEventListener("click", function(){
       var controls=document.getElementById("examControls");
