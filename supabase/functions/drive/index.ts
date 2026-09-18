@@ -1123,7 +1123,44 @@ Devolvé ÚNICAMENTE JSON válido:
         const planRes = await fetchWithTimeout("https://api.openai.com/v1/responses", {
           method:"POST",
           headers:{ Authorization:`Bearer ${OPENAI_API_KEY}`, "Content-Type":"application/json" },
-          body:JSON.stringify({ model:OPENAI_MODEL, input:[{role:"user",content:planningParts}], max_output_tokens:5000 }),
+          body:JSON.stringify({
+            model:OPENAI_MODEL,
+            input:[{role:"user",content:planningParts}],
+            max_output_tokens:5000,
+            text:{
+              format:{
+                type:"json_schema",
+                name:"exam_coverage_plan",
+                description:"Plan de objetivos de evaluación extraído exclusivamente de los archivos adjuntos.",
+                strict:true,
+                schema:{
+                  type:"object",
+                  properties:{
+                    objectives:{
+                      type:"array",
+                      items:{
+                        type:"object",
+                        properties:{
+                          key:{type:"string"},
+                          objective:{type:"string"},
+                          centralFact:{type:"string"},
+                          perspectiveKey:{type:"string"},
+                          cluster:{type:"string"},
+                          category:{type:"string"},
+                          subtopic:{type:"string"},
+                          sourceBasis:{type:"string"}
+                        },
+                        required:["key","objective","centralFact","perspectiveKey","cluster","category","subtopic","sourceBasis"],
+                        additionalProperties:false
+                      }
+                    }
+                  },
+                  required:["objectives"],
+                  additionalProperties:false
+                }
+              }
+            }
+          }),
         }, OPENAI_TIMEOUT_MS);
         const planJson = await planRes.json();
         await recordOpenAIUsage(planJson, { user, action: "generateQuestions", stage: "planning", topic: cleanTopic, files: filesInput });
@@ -1156,11 +1193,95 @@ Devolvé ÚNICAMENTE JSON válido:
           if(selectedObjectives.length>=count) break;
           const duplicate = selectedObjectives.some((x:any) =>
             normalizeFact(x.centralFact)===normalizeFact(o.centralFact) ||
-            factSimilarity(x.centralFact,o.centralFact)>=0.82
+            factSimilarity(x.centralFact,o.centralFact)>=0.90
           );
           if(!duplicate) selectedObjectives.push(o);
         }
         coveragePlan.objectives = selectedObjectives.slice(0,count);
+
+        // Si el planificador no produjo suficientes objetivos distintos, pedir una
+        // ampliación antes de redactar. Esto evita que un filtro de redundancia
+        // reduzca silenciosamente un examen solicitado a 10 preguntas a 7 u 8.
+        if (coveragePlan.objectives.length < count) {
+          const missing = count - coveragePlan.objectives.length;
+          const existingFacts = coveragePlan.objectives.map((o:any) => String(o.centralFact || "")).join("\n");
+          const expansionPrompt = `AMPLIÁ EL PLAN DE COBERTURA DEL EXAMEN.
+Tema: ${cleanTopic || "material completo"}
+Necesitamos ${missing} objetivos adicionales realmente distintos.
+Ya seleccionados:
+${existingFacts || "(ninguno)"}
+
+Buscá en los archivos adjuntos otros contenidos académicos desarrollados que todavía no estén representados.
+Un nuevo objetivo debe exigir recuperar una información central diferente; cambiar solamente la redacción, el formato, el orden, una etiqueta, un color o una posición NO sirve.
+Podés usar el mismo tema o subtema si el centralFact es diferente.
+No uses conocimiento externo.
+Devolvé exactamente los campos del esquema y solo objetivos nuevos.`;
+          const expansionParts = [...contentParts];
+          expansionParts[expansionParts.length - 1] = { type:"input_text", text: expansionPrompt };
+          await assertAiBudget();
+          const expansionRes = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+            method:"POST",
+            headers:{ Authorization:`Bearer ${OPENAI_API_KEY}`, "Content-Type":"application/json" },
+            body:JSON.stringify({
+              model:OPENAI_MODEL,
+              input:[{role:"user",content:expansionParts}],
+              max_output_tokens:4000,
+              text:{
+                format:{
+                  type:"json_schema",
+                  name:"exam_coverage_expansion",
+                  description:"Objetivos adicionales de evaluación basados exclusivamente en la fuente.",
+                  strict:true,
+                  schema:{
+                    type:"object",
+                    properties:{
+                      objectives:{
+                        type:"array",
+                        items:{
+                          type:"object",
+                          properties:{
+                            key:{type:"string"},
+                            objective:{type:"string"},
+                            centralFact:{type:"string"},
+                            perspectiveKey:{type:"string"},
+                            cluster:{type:"string"},
+                            category:{type:"string"},
+                            subtopic:{type:"string"},
+                            sourceBasis:{type:"string"}
+                          },
+                          required:["key","objective","centralFact","perspectiveKey","cluster","category","subtopic","sourceBasis"],
+                          additionalProperties:false
+                        }
+                      }
+                    },
+                    required:["objectives"],
+                    additionalProperties:false
+                  }
+                }
+              }
+            })
+          }, OPENAI_TIMEOUT_MS);
+          const expansionJson = await expansionRes.json();
+          await recordOpenAIUsage(expansionJson, { user, action: "generateQuestions", stage: "planning_expansion", topic: cleanTopic, files: filesInput });
+          if (expansionRes.ok) {
+            const extra = Array.isArray(expansionJson?.output)
+              ? expansionJson.output.flatMap((o:any)=>o.content||[]).map((p:any)=>p.text||"").join("").trim()
+              : "";
+            try {
+              const parsedExtra = JSON.parse(extra);
+              for (const o of (parsedExtra?.objectives || [])) {
+                if (coveragePlan.objectives.length >= count) break;
+                if (!o?.objective || !o?.centralFact || !o?.sourceBasis) continue;
+                const duplicate = coveragePlan.objectives.some((x:any) =>
+                  normalizeFact(x.centralFact)===normalizeFact(o.centralFact) ||
+                  factSimilarity(x.centralFact,o.centralFact)>=0.90
+                );
+                if (!duplicate) coveragePlan.objectives.push(o);
+              }
+            } catch (_e) {}
+          }
+        }
+        coveragePlan.objectives = coveragePlan.objectives.slice(0,count);
 
         const plannedObjectives = coveragePlan.objectives.map((o:any, i:number) =>
           `${i + 1}. [${o?.category || "otro"}] objetivo: ${o?.objective || ""} | centralFact: ${o?.centralFact || ""} | perspectiva: ${o?.perspectiveKey || ""} | bloque: ${o?.cluster || ""} | evidencia: ${o?.sourceBasis || ""}`
@@ -1178,7 +1299,43 @@ REGLA CRÍTICA: generá una pregunta por cada objetivo del plan, en el mismo ord
         const rr = await fetchWithTimeout("https://api.openai.com/v1/responses", {
           method:"POST",
           headers:{ Authorization:`Bearer ${OPENAI_API_KEY}`, "Content-Type":"application/json" },
-          body:JSON.stringify({ model:OPENAI_MODEL, input:[{role:"user",content:contentParts}], max_output_tokens:7000 }),
+          body:JSON.stringify({
+            model:OPENAI_MODEL,
+            input:[{role:"user",content:contentParts}],
+            max_output_tokens:7000,
+            text:{
+              format:{
+                type:"json_schema",
+                name:"exam_questions",
+                description:"Preguntas de examen basadas exclusivamente en los archivos adjuntos y en el plan de cobertura.",
+                strict:true,
+                schema:{
+                  type:"object",
+                  properties:{
+                    questions:{
+                      type:"array",
+                      items:{
+                        type:"object",
+                        properties:{
+                          number:{type:"integer"},
+                          type:{type:"string"},
+                          coverageKey:{type:"string"},
+                          question:{type:"string"},
+                          options:{type:"array",items:{type:"string"}},
+                          correctAnswer:{type:"string"},
+                          explanation:{type:"string"}
+                        },
+                        required:["number","type","coverageKey","question","options","correctAnswer","explanation"],
+                        additionalProperties:false
+                      }
+                    }
+                  },
+                  required:["questions"],
+                  additionalProperties:false
+                }
+              }
+            }
+          }),
         }, OPENAI_TIMEOUT_MS);
         const rj=await rr.json();
         await recordOpenAIUsage(rj, { user, action: "generateQuestions", stage: "questions", topic: cleanTopic, files: filesInput });
@@ -1186,7 +1343,9 @@ REGLA CRÍTICA: generá una pregunta por cada objetivo del plan, en el mismo ord
         const raw = (rj.output || []).flatMap((o:any)=>o.content||[]).map((p:any)=>p.text||"").join("").trim();
         if(!raw) throw new Error("OpenAI no devolvió preguntas.");
         let questions;
-        try { questions = JSON.parse(raw); } catch(_e) {
+        try {
+          questions = JSON.parse(raw);
+        } catch(_e) {
           const cleaned = raw.replace(/^\`\`\`json\s*/i,"").replace(/\s*\`\`\`$/,"");
           questions = JSON.parse(cleaned);
         }
