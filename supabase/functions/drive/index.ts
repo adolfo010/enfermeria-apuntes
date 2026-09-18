@@ -951,32 +951,29 @@ Tipo solicitado: ${type}.
 Dificultad: ${difficultyText}.
 ${cleanTopic ? `Tema específico: "${cleanTopic}". Las preguntas deben centrarse en ese tema.` : "Si no se indicó tema, cubrí los conceptos relevantes del material."}
 No inventes datos, conceptos, tratamientos, valores ni definiciones que no aparezcan en los archivos.
-Las preguntas deben ser claras, académicas y variadas. Evitá repetir la misma idea con distinta redacción. Distribuí las preguntas entre los distintos subtemas realmente presentes en la fuente, cuando haya suficiente contenido para hacerlo.
-REGLAS DE CALIDAD:
-- No hagas dos o más preguntas que evalúen esencialmente el mismo dato. Si una pregunta ya evalúa una función o relación concreta, no vuelvas a preguntarla simplemente cambiando la redacción.
-- Antes de generar cada pregunta, construí internamente un mapa de cobertura de los conceptos disponibles y asigná a cada pregunta un objetivo de evaluación distinto. La repetición de una respuesta correcta, estructura o función por sí sola NO constituye variedad.
-- En particular, no generes varias preguntas sobre la misma cadena funcional (por ejemplo, dendritas reciben mensajes, axón conduce información, botones terminales liberan neurotransmisores) salvo que una pregunta evalúe una relación adicional claramente diferente.
-- Distribuí las preguntas entre los distintos subtemas y estructuras disponibles. No concentres la mitad del examen en un único aspecto si existen otros contenidos desarrollados en la fuente.
-- Cuando existan suficientes contenidos, procurá cubrir definición, estructura, características, funciones, componentes y relaciones diferentes antes de repetir un concepto.
-- Si la cantidad solicitada obliga a repetir un área por falta de contenido, cambiá el enfoque cognitivo de la pregunta y no repitas la misma afirmación textual.
-- No uses como distractores afirmaciones absurdas o claramente ajenas al tema; los distractores deben ser plausibles y estar basados en conceptos presentes en el material, sin alterar su significado.
-- Si el tipo solicitado es "Mixto", combiná opción múltiple, verdadero/falso, respuesta breve y relación de conceptos cuando el material lo permita.
-- En "relación de conceptos", presentá relaciones concretas entre varias estructuras/conceptos y sus funciones o características, y hacé que el estudiante deba identificar la combinación correcta.
-- Priorizá comprensión y aplicación del contenido por sobre la memorización de frases literales, especialmente en dificultades 3 a 5.
-- No infieras secuencias, mecanismos, causas o relaciones que el material no explique explícitamente. Una respuesta debe poder justificarse directamente con la fuente.
-- Si el tema seleccionado tiene subtemas, cubrí esos subtemas sin salir del árbol temático seleccionado.
-- La respuesta correcta y la explicación deben estar respaldadas por el material enviado.
-- coverageKey debe ser específico para distinguir objetivos diferentes; no uses una clave genérica como "neurona" para todas las preguntas.
-Devolvé ÚNICAMENTE un JSON válido con esta estructura:
-{"questions":[{"number":1,"type":"...","coverageKey":"...","question":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}
 
-COBERTURA OBLIGATORIA:
-- Antes de redactar las preguntas, identificá objetivos de evaluación realmente distintos dentro del contenido disponible.
-- Cada pregunta debe tener un coverageKey breve que identifique el concepto/objetivo concreto que evalúa.
-- No uses el mismo coverageKey para dos preguntas salvo que no exista contenido suficiente para evitarlo.
-- Dos preguntas cuentan como repetidas aunque estén redactadas de forma diferente si evalúan esencialmente el mismo concepto, estructura, función, relación o dato.
-- No uses coverageKey diferentes para disfrazar preguntas que evalúan la misma idea.
-- Distribuí los coverageKey entre los distintos subtemas, estructuras, características, funciones y relaciones presentes en la fuente.
+MODO DE PLANIFICACIÓN OBLIGATORIO:
+Antes de redactar las preguntas, construí internamente un PLAN DE COBERTURA. Identificá primero objetivos de evaluación genuinamente distintos que estén desarrollados en la fuente y sean adecuados para el tema seleccionado. Después asigná una pregunta a cada objetivo.
+Priorizá, cuando estén disponibles, categorías diferentes: definición, estructura/componentes, características, función, clasificación, relación entre conceptos, mecanismo/proceso, identificación, consecuencias o aplicación.
+Una misma afirmación debe contar como un solo objetivo. Por ejemplo, "amortiguación física y química" es un único objetivo y no debe generar dos preguntas.
+Si el contenido no permite alcanzar la cantidad solicitada con objetivos genuinamente diferentes, reducí la cantidad al máximo justificable. No fabriques variedad.
+
+REGLAS:
+- No hagas dos preguntas que evalúen esencialmente el mismo concepto, estructura, función, relación o dato, aunque cambies la redacción.
+- Si dos preguntas pueden responderse con la misma frase central del material, consideralas repetidas salvo que evalúen una relación adicional claramente diferente.
+- No uses coverageKey diferentes para disfrazar el mismo objetivo.
+- Cada coverageKey debe representar un objetivo concreto y distinto.
+- Distribuí las preguntas entre los subtemas y estructuras realmente presentes.
+- Priorizá comprensión, aplicación y relaciones explícitas antes que repetir definiciones.
+- No infieras mecanismos, causas o relaciones que la fuente no explique.
+- Los distractores deben ser plausibles y basados en conceptos presentes en la fuente.
+- Si el tipo es "Mixto", combiná formatos cuando el material lo permita.
+- En "relación de conceptos", evaluá una relación que no haya sido evaluada por otra pregunta.
+- La respuesta correcta y la explicación deben estar respaldadas directamente por el material.
+- Permanecé dentro del árbol temático seleccionado.
+
+Devolvé ÚNICAMENTE un JSON válido:
+{"questions":[{"number":1,"type":"...","coverageKey":"...","question":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}
 Para preguntas que no sean de opción múltiple, options debe ser [].
 Si se solicitan respuestas, completá correctAnswer y explanation. Si no se solicitan, dejalos como "".
 ${answers ? "Incluí respuesta correcta y una explicación breve basada en el material." : "No incluyas respuestas ni explicaciones."}`;
