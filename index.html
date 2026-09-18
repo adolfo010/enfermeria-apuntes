@@ -401,6 +401,65 @@
     });
   }
 
+
+  function callDriveBinary(payload){
+    return fetch(SUPABASE_URL + "/functions/v1/drive", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + (window.__supabaseSession ? window.__supabaseSession.access_token : ANON_KEY),
+        "apikey": ANON_KEY
+      },
+      body: JSON.stringify(payload)
+    }).then(async function(res){
+      if (!res.ok){
+        var msg = "error";
+        try {
+          var json = await res.json();
+          msg = json.error || msg;
+        } catch(_e) {
+          try { msg = await res.text(); } catch(_e2) {}
+        }
+        var e = new Error(msg || ("HTTP " + res.status));
+        e.status = res.status;
+        throw e;
+      }
+      return res;
+    });
+  }
+
+  function downloadDriveFile(file){
+    if (!file || !file.id) return;
+    var msg = document.getElementById("previewActionMsg");
+    if (msg) msg.innerHTML = '<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Preparando descarga…</div>';
+    callDriveBinary({action:"download",fileId:file.id})
+      .then(function(res){
+        var disposition = res.headers.get("Content-Disposition") || "";
+        var match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        var name = match ? decodeURIComponent(match[1]) : (file.name || "archivo");
+        return res.blob().then(function(blob){
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+          if (msg) msg.innerHTML = '<div class="banner info" style="margin-top:10px;">Descarga iniciada ✓</div>';
+        });
+      })
+      .catch(function(err){
+        var text = String(err && err.message || "");
+        if (text === "DRIVE_DOWNLOAD_NOT_ALLOWED") {
+          text = "Google Drive no permite descargar este archivo con los permisos actuales.";
+        } else if (/403|permission|access/i.test(text)) {
+          text = "Google Drive rechazó la descarga por permisos. La conexión autorizada de la aplicación no tiene acceso suficiente a este archivo.";
+        }
+        if (msg) msg.innerHTML = '<div class="banner danger" style="margin-top:10px;">No se pudo descargar: ' + escapeHtml(text) + '</div>';
+      });
+  }
+
   function renderConnect(connected){
     if (connected){
       els.connectArea.innerHTML = "";
@@ -430,9 +489,8 @@
     }
     html += '<div class="preview-title">' + escapeHtml(file.name) + '</div>';
     html += '<div class="preview-path">' + escapeHtml(extBadge(file.name, file.mimeType)) + (file.size ? "  ·  " + Math.round(file.size/1024) + " KB" : "") + '</div>';
-    var downloadUrl = "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(file.id);
     html += '<div class="preview-actions">' +
-      '<a href="' + downloadUrl + '"><button type="button">Descargar ⬇</button></a>' +
+      '<button type="button" id="downloadDriveBtn">Descargar ⬇</button>' +
       '<a href="' + openUrl + '" target="_blank" rel="noopener"><button type="button" class="ghost">Abrir en Drive ↗</button></a>' +
       '<button type="button" class="ghost" id="renameBtn">Renombrar ✎</button>' +
       '<button type="button" class="ghost" id="deleteBtn">Eliminar 🗑</button>' +
@@ -457,6 +515,11 @@
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
+
+    document.getElementById("downloadDriveBtn").addEventListener("click", function(){
+      downloadDriveFile(file);
+    });
+
 
     document.getElementById("renameBtn").addEventListener("click", function(){
       var nuevo = window.prompt("Nuevo nombre para el archivo:", file.name);
@@ -816,10 +879,9 @@
     var pasoUno = chosen.length > 1 ? "1) Descargá cada archivo (no sirve el link de Drive, ChatGPT no puede abrirlo)" : "1) Descargá el archivo (no sirve el link de Drive, ChatGPT no puede abrirlo)";
     var prompt = buildChatGptPrompt(chosen, topic);
     var linksHtml = chosen.map(function(f){
-      var downloadUrl = "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(f.id);
       var openUrl = f.webViewLink || ("https://drive.google.com/file/d/" + f.id + "/view");
       return '<li style="margin:6px 0;">' + escapeHtml(f.name) +
-        ' — <a href="' + downloadUrl + '">Descargar ⬇</a>' +
+        ' — <button type="button" class="small ghost app-download-link" data-file-id="' + escapeHtml(f.id) + '">Descargar ⬇</button>' +
         ' · <a href="' + escapeHtml(openUrl) + '" target="_blank" rel="noopener">Abrir en Drive ↗</a></li>';
     }).join("");
     target.innerHTML =
@@ -838,6 +900,12 @@
         target.querySelector("#copyPromptMsg").textContent = ok
           ? "Prompt copiado ✓ — ahora pegalo en ChatGPT."
           : "No se pudo copiar automáticamente — seleccioná el texto de arriba y copiá manualmente (Ctrl+C).";
+      });
+    });
+    Array.prototype.forEach.call(target.querySelectorAll(".app-download-link"), function(btn){
+      btn.addEventListener("click", function(){
+        var file = chosen.find(function(f){ return f.id === btn.getAttribute("data-file-id"); });
+        if (file) downloadDriveFile(file);
       });
     });
     target.querySelector("#openChatGptBtn").addEventListener("click", function(){
