@@ -272,7 +272,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.12";
+  var APP_VERSION = "0.4.13";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -673,10 +673,21 @@
     var bar = document.getElementById("multiSelectBar");
     var ids = Object.keys(selectedIds).filter(function(id){ return selectedIds[id]; });
     if (ids.length < 1){ bar.style.display = "none"; bar.innerHTML = ""; return; }
+
+    // El término de búsqueda superior también es el tema por defecto para IA.
+    // Si el usuario ya escribió otro tema, se conserva al redibujar la barra.
+    var previousTopic = document.getElementById("multiTopic");
+    var topicValue = previousTopic
+      ? previousTopic.value.trim()
+      : document.getElementById("searchInput").value.trim();
+
     bar.style.display = "flex";
     bar.innerHTML =
       '<span class="count">' + ids.length + (ids.length === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
-      '<input type="text" id="multiTopic" placeholder="Tema a buscar' + (ids.length > 1 ? ' en estos archivos' : '') + ' — ej: huesos de la mano">' +
+      '<div style="flex:1;min-width:220px;">' +
+        '<input type="text" id="multiTopic" value="' + escapeHtml(topicValue) + '" placeholder="Tema para el resumen con IA' + (ids.length > 1 ? ' en estos archivos' : '') + ' — ej: huesos de la mano">' +
+        '<div class="muted" style="font-size:12px;margin-top:4px;">Se completa automáticamente con la búsqueda superior. Podés cambiarlo si querés resumir otro tema.</div>' +
+      '</div>' +
       '<div class="summary-controls" style="flex-basis:100%;">' +
         '<div class="summary-control">' +
           '<label for="summaryLevel">Nivel de resumen <strong id="summaryLevelValue">3 — Equilibrado</strong></label>' +
