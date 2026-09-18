@@ -763,7 +763,7 @@ REGLAS ESTRICTAS:
           // incluso cuando el PDF contiene mucho texto, tablas o imágenes.
           const allPdfChunks=content.mime==="application/pdf"?await splitPdfIntoChunks(content.bytes,3):[content.bytes];
           let selectedChunkIndexes:number[]|null=null;
-          if(cleanTopic){const meta=await getDriveMetaForIndex(f.fileId,accessToken),fp=indexFingerprint(meta),idx=await getCurrentIndex(user.id,f.fileId,fp);if(isDocumentRootTopic(cleanTopic,f.fileName||meta.name||"")){selectedChunkIndexes=allPdfChunks.map((_,i)=>i);}else if(idx&&Array.isArray(idx.topics)){const nt=normalizeForTopic(cleanTopic),set=new Set<number>();for(const t of idx.topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(title===nt||title.includes(nt)||nt.includes(title)||parent===nt||parent.includes(nt)){const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(allPdfChunks.length-1,Number(t.chunk_end??a));for(let c=a;c<=b;c++)set.add(c);}}if(set.size)selectedChunkIndexes=Array.from(set).sort((a,b)=>a-b);}}
+          if(cleanTopic){const meta=await getDriveMetaForIndex(f.fileId,accessToken),fp=indexFingerprint(meta),idx=await getCurrentIndex(user.id,f.fileId,fp);if(isDocumentRootTopic(cleanTopic,f.fileName||meta.name||"")){selectedChunkIndexes=allPdfChunks.map((_,i)=>i);}else if(idx&&Array.isArray(idx.topics)){const nt=normalizeForTopic(cleanTopic),set=new Set<number>();for(const t of idx.topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(title===nt||false||false||parent===nt||false){const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(allPdfChunks.length-1,Number(t.chunk_end??a));for(let c=a;c<=b;c++)set.add(c);}}if(set.size)selectedChunkIndexes=Array.from(set).sort((a,b)=>a-b);}}
           const chunkIndexes=selectedChunkIndexes||allPdfChunks.map((_,i)=>i);
           for(const chunkIndex of chunkIndexes){
             const chunkBytes = allPdfChunks[chunkIndex];
@@ -979,7 +979,7 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
               for (const t of idx.topics) {
                 const title = normalizeForTopic(t.title || "");
                 const parent = normalizeForTopic(t.parent || "");
-                if (title === nt || title.includes(nt) || nt.includes(title) || parent === nt || parent.includes(nt)) {
+                if (title === nt || false || false || parent === nt || false) {
                   const a = Math.max(0, Number(t.chunk_start || 0));
                   const b = Math.min(allChunks.length - 1, Number(t.chunk_end ?? a));
                   for (let c = a; c <= b; c++) set.add(c);
