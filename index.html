@@ -132,6 +132,20 @@
   .summarize-row{display:flex;gap:8px;margin-top:12px;}
   .summarize-row input{flex:1;min-width:0;font-family:var(--font-body);font-size:14.5px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .password-field{position:relative;display:flex;align-items:center;}
+  .password-field input{width:100%;padding-right:82px !important;}
+  .toggle-password{position:absolute;right:6px;padding:6px 9px;font-size:12px;border-radius:7px;background:transparent;color:var(--muted);border:1px solid var(--line);}
+  .toggle-password:hover{background:var(--surface-2);}
+  .account-modal{position:fixed;inset:0;background:rgba(26,20,23,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:1000;}
+  .account-modal.open{display:flex;}
+  .account-card{width:min(460px,100%);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px;}
+  .account-card h2{margin:0 0 6px;font-size:20px;}
+  .account-card .sub{color:var(--muted);font-size:14px;margin-bottom:16px;}
+  .account-form{display:flex;flex-direction:column;gap:10px;}
+  .account-form label{font-size:13px;font-weight:600;color:var(--muted);}
+  .account-form input{font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);outline:none;}
+  .account-form input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .account-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;}
 </style>
 </head>
 <body>
@@ -141,12 +155,45 @@
     <div style="color:var(--muted);font-size:14px;">Ingresá con tu cuenta autorizada.</div>
     <form id="loginForm" style="width:100%;display:flex;flex-direction:column;gap:10px;">
       <input id="loginEmail" type="email" autocomplete="username" placeholder="Correo electrónico" required style="font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);">
-      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña" required style="font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);">
+      <div class="password-field">
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña" required style="font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);">
+        <button type="button" class="toggle-password" data-target="loginPassword">Ver</button>
+      </div>
       <button type="submit" id="loginBtn">Ingresar</button>
       <div id="loginMsg" class="banner danger" style="display:none;"></div>
     </form>
   </div>
 </div>
+
+<div class="account-modal" id="accountModal" aria-hidden="true">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+    <h2 id="accountTitle">Mi cuenta</h2>
+    <div class="sub" id="accountEmail"></div>
+    <form class="account-form" id="changePasswordForm">
+      <label for="currentPassword">Contraseña actual</label>
+      <div class="password-field">
+        <input id="currentPassword" type="password" autocomplete="current-password" required>
+        <button type="button" class="toggle-password" data-target="currentPassword">Ver</button>
+      </div>
+      <label for="newPassword">Nueva contraseña</label>
+      <div class="password-field">
+        <input id="newPassword" type="password" autocomplete="new-password" minlength="8" required>
+        <button type="button" class="toggle-password" data-target="newPassword">Ver</button>
+      </div>
+      <label for="confirmPassword">Repetir nueva contraseña</label>
+      <div class="password-field">
+        <input id="confirmPassword" type="password" autocomplete="new-password" minlength="8" required>
+        <button type="button" class="toggle-password" data-target="confirmPassword">Ver</button>
+      </div>
+      <div id="passwordMsg" style="display:none;"></div>
+      <div class="account-actions">
+        <button type="button" class="ghost" id="closeAccountBtn">Cancelar</button>
+        <button type="submit" id="changePasswordBtn">Cambiar contraseña</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="shell" id="appShell" style="display:none;">
 
   <header class="top">
@@ -922,11 +969,95 @@
     document.getElementById("userBar").innerHTML =
       '<span class="pill ' + (admin ? 'good' : 'muted') + '">' +
       escapeHtml(email || "") + ' · ' + escapeHtml(currentUserRole) +
-      '</span><button type="button" class="small ghost" id="logoutBtn">Salir</button>';
+      '</span><button type="button" class="small ghost" id="accountBtn">Mi cuenta</button><button type="button" class="small ghost" id="logoutBtn">Salir</button>';
+    document.getElementById("accountBtn").addEventListener("click", function(){
+      openAccountModal(email);
+    });
     document.getElementById("logoutBtn").addEventListener("click", function(){
       supabaseClient.auth.signOut();
     });
   }
+
+  function openAccountModal(email){
+    var modal=document.getElementById("accountModal");
+    document.getElementById("accountEmail").textContent=email || "";
+    document.getElementById("changePasswordForm").reset();
+    document.getElementById("passwordMsg").style.display="none";
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden","false");
+    setTimeout(function(){ document.getElementById("currentPassword").focus(); },0);
+  }
+
+  function closeAccountModal(){
+    var modal=document.getElementById("accountModal");
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden","true");
+  }
+
+  document.getElementById("closeAccountBtn").addEventListener("click", closeAccountModal);
+  document.getElementById("accountModal").addEventListener("click", function(e){
+    if(e.target === this) closeAccountModal();
+  });
+  document.addEventListener("keydown", function(e){
+    if(e.key === "Escape") closeAccountModal();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".toggle-password"), function(btn){
+    btn.addEventListener("click", function(){
+      var input=document.getElementById(btn.getAttribute("data-target"));
+      var visible=input.type === "text";
+      input.type=visible ? "password" : "text";
+      btn.textContent=visible ? "Ver" : "Ocultar";
+    });
+  });
+
+  document.getElementById("changePasswordForm").addEventListener("submit", async function(e){
+    e.preventDefault();
+    var current=document.getElementById("currentPassword").value;
+    var next=document.getElementById("newPassword").value;
+    var confirm=document.getElementById("confirmPassword").value;
+    var msg=document.getElementById("passwordMsg");
+    var btn=document.getElementById("changePasswordBtn");
+    msg.className="banner danger";
+    msg.style.display="none";
+
+    if(next.length < 8){
+      msg.textContent="La nueva contraseña debe tener al menos 8 caracteres.";
+      msg.style.display="flex";
+      return;
+    }
+    if(next !== confirm){
+      msg.textContent="Las nuevas contraseñas no coinciden.";
+      msg.style.display="flex";
+      return;
+    }
+    if(current === next){
+      msg.textContent="La nueva contraseña debe ser diferente de la actual.";
+      msg.style.display="flex";
+      return;
+    }
+
+    btn.disabled=true;
+    btn.textContent="Guardando…";
+    var result=await supabaseClient.auth.updateUser({
+      password:next,
+      current_password:current
+    });
+    btn.disabled=false;
+    btn.textContent="Cambiar contraseña";
+
+    if(result.error){
+      msg.textContent="No se pudo cambiar la contraseña. Verificá la contraseña actual y los requisitos de seguridad.";
+      msg.style.display="flex";
+      return;
+    }
+
+    msg.className="banner info";
+    msg.textContent="Contraseña cambiada correctamente.";
+    msg.style.display="flex";
+    document.getElementById("changePasswordForm").reset();
+    setTimeout(closeAccountModal,1200);
+  });
 
   async function startAuthenticatedApp(session){
     if (!session || !session.access_token){ showLogin(); return; }
