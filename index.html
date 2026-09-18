@@ -431,17 +431,6 @@
     html += '<div class="preview-title">' + escapeHtml(file.name) + '</div>';
     html += '<div class="preview-path">' + escapeHtml(extBadge(file.name, file.mimeType)) + (file.size ? "  ·  " + Math.round(file.size/1024) + " KB" : "") + '</div>';
     var downloadUrl = "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(file.id);
-    html += '<div class="summarize-row" style="margin-top:8px;">' +
-      '<button type="button" id="examBtn">Generar preguntas de examen 📝</button>' +
-    '</div>' +
-    '<div id="examControls" class="exam-controls" style="display:none;">' +
-      '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
-      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
-      '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
-      '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
-      '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
-    '</div>' +
-    '<div id="examResult"></div>';
     html += '<div class="preview-actions">' +
       '<a href="' + downloadUrl + '"><button type="button">Descargar ⬇</button></a>' +
       '<a href="' + openUrl + '" target="_blank" rel="noopener"><button type="button" class="ghost">Abrir en Drive ↗</button></a>' +
@@ -453,7 +442,18 @@
       '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
       '<button type="button" class="ghost" id="summarizeBtn">Generar resumen con IA ✨</button>' +
     '</div>' +
-
+    '<div class="summarize-row" style="margin-top:8px;">' +
+      '<button type="button" id="examBtn">Generar preguntas de examen 📝</button>' +
+    '</div>' +
+    '<div id="examControls" class="exam-controls" style="display:none;">' +
+      '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
+      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option>Opción múltiple">Opción múltiple</option><option>Verdadero/Falso">Verdadero / Falso</option><option>Respuesta corta">Respuesta corta</option><option>Desarrollo">Desarrollo</option><option>Caso clínico">Caso clínico</option></select></div>' +
+      '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
+      '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
+      '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+    '</div>' +
+    '<div id="summaryResult"></div>' +
+    '<div id="examResult"></div>';
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
