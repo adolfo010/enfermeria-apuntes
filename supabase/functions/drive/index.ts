@@ -1095,18 +1095,28 @@ Cantidad solicitada: ${count}
 Tipo: ${type}
 Dificultad: ${difficultyText}
 
-No redactes preguntas todavía. Generá solamente un PLAN DE COBERTURA.
+NO REDACTES PREGUNTAS. Construí solamente el plan.
 
-1. Identificá los objetivos de evaluación realmente desarrollados en la fuente.
-2. Agrupá los objetivos que pertenecen al mismo bloque conceptual o a una misma cadena causal/funcional.
-3. Seleccioná hasta ${count} objetivos que sean suficientemente independientes entre sí.
-4. Priorizá variedad de subtemas y de categorías cognitivas (definición, estructura, características, función, clasificación, relación, proceso, identificación, aplicación).
-5. No cuentes como objetivos independientes afirmaciones que formen una misma cadena. Ejemplo: "alta tasa metabólica", "no almacena nutrientes" y "necesita suministro constante" son un bloque relacionado; evitá ocupar tres preguntas con ese mismo bloque.
-6. Si no existen ${count} objetivos independientes, devolvé menos objetivos. No inventes variedad.
-7. Cada objetivo debe poder justificarse directamente con la fuente y permanecer dentro del tema seleccionado.
+Identificá al menos ${Math.max(count * 3, 20)} candidatos cuando el contenido lo permita. Para cada uno indicá objective, centralFact, perspectiveKey, cluster, subtopic, category y sourceBasis.
+centralFact es la información central que el estudiante debe recuperar para responder.
+
+Seleccioná EXACTAMENTE ${count} objetivos si existen suficientes contenidos defendibles. Un mismo tema puede tener varias preguntas válidas.
+Dos candidatos son duplicados si exigen recuperar esencialmente el mismo dato, función, relación, identificación o respuesta central, aunque cambien formato, redacción, contexto o perspectiveKey.
+Cambiar opción múltiple por verdadero/falso, identificación, aplicación o respuesta breve NO crea un objetivo nuevo si la respuesta central es la misma.
+Sí son válidos varios objetivos del mismo tema cuando exigen información central diferente.
+No uses color, posición o una etiqueta repetida del dibujo como contenido académico nuevo salvo significado explícito en la fuente.
+No combines dos objetivos independientes en una sola pregunta salvo que la relación entre ellos sea precisamente el objetivo.
+No uses conocimiento externo.
+
+VERIFICACIÓN FINAL:
+- Si existen ${count} centralFact distintos respaldados, el plan DEBE contener ${count}.
+- No debe contener dos centralFact esencialmente iguales.
+- Cada centralFact debe tener evidencia en sourceBasis.
+- No reduzcas la cantidad por el simple hecho de que varios objetivos pertenezcan al mismo tema.
+- Solo devolvé menos si realmente no existen ${count} contenidos centrales distintos.
 
 Devolvé ÚNICAMENTE JSON válido:
-{"objectives":[{"key":"clave específica","objective":"objetivo de evaluación concreto","cluster":"bloque conceptual al que pertenece","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación","sourceBasis":"breve indicación del contenido de la fuente que lo respalda"}]}`;
+{"objectives":[{"key":"clave específica","objective":"un único objetivo principal","centralFact":"información central evaluada","perspectiveKey":"perspectiva evaluativa","cluster":"bloque conceptual","category":"definición|estructura|característica|función|clasificación|relación|proceso|identificación|aplicación|consecuencia","subtopic":"subtema","sourceBasis":"evidencia concreta de la fuente"}]}`;
 
         const planningParts = [...contentParts, { type:"input_text", text: planningPrompt }];
         await assertAiBudget();
@@ -1132,15 +1142,14 @@ Devolvé ÚNICAMENTE JSON válido:
         coveragePlan.objectives = coveragePlan.objectives.slice(0, count);
 
         const plannedObjectives = coveragePlan.objectives.map((o:any, i:number) =>
-          `${i + 1}. [${o?.category || "otro"}] ${o?.objective || ""} | bloque: ${o?.cluster || ""} | clave: ${o?.key || ""}`
-        ).join("\n");
-
+          `${i + 1}. [${o?.category || "otro"}] objetivo: ${o?.objective || ""} | centralFact: ${o?.centralFact || ""} | perspectiva: ${o?.perspectiveKey || ""} | bloque: ${o?.cluster || ""} | evidencia: ${o?.sourceBasis || ""}`
+        )
         const promptWithPlan = prompt + `
 
 PLAN DE COBERTURA PREVIAMENTE SELECCIONADO:
 ${plannedObjectives}
 
-REGLA CRÍTICA: generá una pregunta por cada objetivo del plan, en el mismo orden. No agregues objetivos nuevos si el plan ya contiene la cantidad suficiente. No conviertas un mismo bloque conceptual en varias preguntas. Si dos objetivos del plan resultan ser esencialmente el mismo, conservá solo uno y utilizá el siguiente objetivo independiente disponible del plan. El coverageKey de cada pregunta debe corresponder al objetivo que evalúa.`;
+REGLA CRÍTICA: generá una pregunta por cada objetivo del plan, en el mismo orden. Podés generar varias preguntas del mismo bloque si evalúan centralFact diferentes. No combines objetivos independientes y no cambies el objetivo del plan. El coverageKey de cada pregunta debe corresponder al objetivo que evalúa.`;
 
         contentParts[contentParts.length - 1] = { type:"input_text", text: promptWithPlan };
 
