@@ -600,8 +600,8 @@
     if(idx){
       html+='<div class="banner info" style="margin-top:14px;">🟢 Índice disponible · '+escapeHtml(String(idx.topics?.length||0))+' temas/subtemas · '+escapeHtml(String(idx.page_count||0))+' páginas.</div>';
       html+='<div class="index-topics">'+renderIndexTopics(idx)+'</div>';
-      html+='<div class="muted" style="font-size:12px;margin-top:8px;">Seleccioná un solo tema y generá el resumen. El índice queda guardado para volver a utilizarlo.</div>';
-      html+='<div class="index-actions"><button type="button" id="indexSummarizeSelected">Generar resumen del tema seleccionado ✨</button><button type="button" class="ghost" id="indexRefreshBtn">Actualizar estado</button></div>';
+      html+='<div class="muted" style="font-size:12px;margin-top:8px;">Seleccioná un solo tema para generar un resumen o un examen. El índice queda guardado para volver a utilizarlo.</div>';
+      html+='<div class="index-actions"><button type="button" id="indexSummarizeSelected">Generar resumen del tema seleccionado ✨</button><button type="button" id="indexExamSelected">Generar examen del tema 📝</button><button type="button" class="ghost" id="indexRefreshBtn">Actualizar estado</button></div>';
     }else if(job && (job.status==="running"||job.status==="pending"||job.status==="paused"||job.status==="error")){
       var total=Number(job.total_pages||0),done=Number(job.processed_pages||0),pct=total?Math.min(100,Math.round(done*100/total)):0;
       html+='<div class="index-progress"><div class="index-progress-row"><strong>'+ (job.status==="paused"?"⏸ Pausado":job.status==="error"?"⚠ Con error":"⏳ Analizando índice…") +'</strong><span>'+done+' / '+total+' páginas · '+pct+'%</span></div><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%;"></div></div>';
@@ -634,6 +634,26 @@
         if(input)input.value=topic.title||"";
         var box=document.getElementById("summaryResult");
         generateSummary([file],topic.title||"",box);
+      },0);
+    });
+
+    var selectedExam=content.querySelector("#indexExamSelected");
+    if(selectedExam)selectedExam.addEventListener("click",function(){
+      var checked=content.querySelector(".index-topic-check:checked");
+      if(!checked){alert("Seleccioná un tema del índice.");return;}
+      var idxPos=Number(checked.getAttribute("data-index-topic"));
+      var topic=(idx.topics||[])[idxPos];
+      closeIndexModal();
+      renderPreview(file);
+      setTimeout(function(){
+        var input=document.getElementById("summarizeTopic");
+        if(input)input.value=topic.title||"";
+        var box=document.getElementById("examResult");
+        generateQuestions([file],topic.title||"",box,
+          Number(document.getElementById("examCount").value),
+          document.getElementById("examType").value,
+          Number(document.getElementById("examDifficulty").value),
+          document.getElementById("examAnswers").checked);
       },0);
     });
     var start=content.querySelector("#indexStartBtn");
