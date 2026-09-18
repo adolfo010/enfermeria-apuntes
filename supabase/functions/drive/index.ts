@@ -744,11 +744,12 @@ REGLAS ESTRICTAS:
           const allPdfChunks=content.mime==="application/pdf"?await splitPdfIntoChunks(content.bytes,3):[content.bytes];
           let selectedChunkIndexes:number[]|null=null;
           if(cleanTopic){const meta=await getDriveMetaForIndex(f.fileId,accessToken),fp=indexFingerprint(meta),idx=await getCurrentIndex(user.id,f.fileId,fp);if(idx&&Array.isArray(idx.topics)){const nt=normalizeForTopic(cleanTopic),set=new Set<number>();for(const t of idx.topics){const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");if(title===nt||title.includes(nt)||nt.includes(title)||parent===nt||parent.includes(nt)){const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(allPdfChunks.length-1,Number(t.chunk_end??a));for(let c=a;c<=b;c++)set.add(c);}}if(set.size)selectedChunkIndexes=Array.from(set).sort((a,b)=>a-b);}}
-          const pdfChunks=selectedChunkIndexes?selectedChunkIndexes.map(i=>allPdfChunks[i]):allPdfChunks,originalChunkIndexes=selectedChunkIndexes||allPdfChunks.map((_,i)=>i);
-          for(let localChunkIndex=0;localChunkIndex<pdfChunks.length;localChunkIndex++){const chunkIndex=originalChunkIndexes[localChunkIndex];
-            const chunkBytes = pdfChunks[chunkIndex];
-            const chunkName = pdfChunks.length > 1
-              ? `${(f.fileName || "apunte").replace(/\.pdf$/i, "")} — parte ${chunkIndex + 1} de ${pdfChunks.length}.pdf`
+          const chunkIndexes=selectedChunkIndexes||allPdfChunks.map((_,i)=>i);
+          for(const chunkIndex of chunkIndexes){
+            const chunkBytes = allPdfChunks[chunkIndex];
+            if(!chunkBytes) throw new Error(`INDEX_CHUNK_NOT_FOUND: no se pudo recuperar el bloque ${chunkIndex + 1} del PDF`);
+            const chunkName = allPdfChunks.length > 1
+              ? `${(f.fileName || "apunte").replace(/\.pdf$/i, "")} — parte ${chunkIndex + 1} de ${allPdfChunks.length}.pdf`
               : (f.fileName || "apunte");
 
             const form = new FormData();
