@@ -173,6 +173,14 @@
   .index-badge.pending{background:var(--warn-soft);color:var(--warn);}
   .index-badge.loading{background:var(--surface-2);color:var(--muted);}
 
+  .reader-modal{position:fixed;inset:0;background:rgba(26,20,23,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:1200;}
+  .reader-modal.open{display:flex;}
+  .reader-card{width:min(760px,100%);max-height:92vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:28px 32px;}
+  .reader-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:4px;}
+  .reader-head h2{margin:0 0 4px;font-size:21px;}
+  .reader-meta{color:var(--muted);font-size:13.5px;margin-bottom:20px;}
+  .reader-body{font-size:18px;line-height:1.75;white-space:pre-wrap;}
+
   .password-field{position:relative;display:flex;align-items:center;}
   .password-field input{width:100%;padding-right:82px !important;}
   .toggle-password{position:absolute;right:6px;padding:6px 9px;font-size:12px;border-radius:7px;background:transparent;color:var(--muted);border:1px solid var(--line);}
@@ -278,6 +286,19 @@
       <button type="button" class="small ghost" id="closeIndexBtn">Cerrar</button>
     </div>
     <div id="indexContent"></div>
+  </div>
+</div>
+
+<div class="reader-modal" id="readerModal" aria-hidden="true">
+  <div class="reader-card" role="dialog" aria-modal="true" aria-labelledby="readerTitle">
+    <div class="reader-head">
+      <div>
+        <h2 id="readerTitle"></h2>
+        <div class="reader-meta" id="readerMeta"></div>
+      </div>
+      <button type="button" class="small ghost" id="closeReaderBtn">Cerrar</button>
+    </div>
+    <div class="reader-body" id="readerBody"></div>
   </div>
 </div>
 
@@ -568,6 +589,20 @@
     if(modal){modal.classList.remove("open");modal.setAttribute("aria-hidden","true");}
   }
 
+  function openReader(title, meta, text){
+    var modal=document.getElementById("readerModal");
+    document.getElementById("readerTitle").textContent = title || "";
+    document.getElementById("readerMeta").textContent = meta || "";
+    document.getElementById("readerBody").textContent = text || "";
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden","false");
+  }
+  function closeReader(){
+    var modal=document.getElementById("readerModal");
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden","true");
+  }
+
   function scheduleIndexPoll(file, delay){
     if(indexPollTimer) clearTimeout(indexPollTimer);
     indexPollTimer=setTimeout(function(){ refreshIndexModal(file); }, delay || 2500);
@@ -649,12 +684,8 @@
       setTimeout(function(){
         var input=document.getElementById("summarizeTopic");
         if(input)input.value=topic.title||"";
-        var examBtn=document.getElementById("examBtn");
         var controls=document.getElementById("examControls");
-        if(examBtn && controls) {
-          controls.style.display="grid";
-          controls.scrollIntoView({behavior:"smooth",block:"center"});
-        }
+        if(controls) controls.scrollIntoView({behavior:"smooth",block:"center"});
       },0);
     });
     var start=content.querySelector("#indexStartBtn");
@@ -738,12 +769,10 @@
       '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
       '<button type="button" class="ghost" id="summarizeBtn">Generar resumen con IA ✨</button>' +
     '</div>' +
-    '<div class="summarize-row" style="margin-top:8px;">' +
-      '<button type="button" id="examBtn">Generar preguntas de examen 📝</button>' +
-    '</div>' +
-    '<div id="examControls" class="exam-controls" style="display:none;">' +
+    '<div class="preview-path" style="margin-top:14px;">Generar examen 📝</div>' +
+    '<div id="examControls" class="exam-controls">' +
       '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
-      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option>Opción múltiple">Opción múltiple</option><option>Verdadero/Falso">Verdadero / Falso</option><option>Respuesta corta">Respuesta corta</option><option>Desarrollo">Desarrollo</option><option>Caso clínico">Caso clínico</option></select></div>' +
+      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
       '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
       '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
       '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
@@ -813,10 +842,6 @@
         box.innerHTML='<div class="banner danger" style="margin-top:10px;">No se pudo consultar el índice ('+escapeHtml(err.message||"error")+').</div>';
       });
     });
-    document.getElementById("examBtn").addEventListener("click", function(){
-      var controls=document.getElementById("examControls");
-      controls.style.display=controls.style.display==="none" ? "grid" : "none";
-    });
     document.getElementById("generateExamBtn").addEventListener("click", function(){
       var topic=document.getElementById("summarizeTopic").value.trim();
       generateQuestions([file], topic, document.getElementById("examResult"),
@@ -853,12 +878,14 @@
          });
          html+='</div>';
          html+='<div class="summarize-row" style="margin-top:12px;flex-wrap:wrap;">' +
-           '<button type="button" id="copyExamBtn">Copiar examen 📋</button>' +
+           '<button type="button" id="readExamBtn">Ver en pantalla completa ⛶</button>' +
+           '<button type="button" class="ghost" id="copyExamBtn">Copiar examen 📋</button>' +
            '<button type="button" class="ghost" id="downloadExamPdfBtn">Descargar PDF ↓</button>' +
            '<button type="button" class="ghost" id="downloadExamWordBtn">Descargar Word ↓</button>' +
          '</div><div id="examDownloadMsg" style="margin-top:6px;font-size:13px;"></div>';
          target.innerHTML=html;
          var examPlain=buildExamText(qs,chosen,topic,includeAnswers);
+         target.querySelector("#readExamBtn").addEventListener("click",function(){openReader(reportTitle, chosen.map(function(f){return f.name;}).join(" · "), examPlain);});
          target.querySelector("#copyExamBtn").addEventListener("click",function(){copyToClipboard(examPlain).then(function(ok){target.querySelector("#examDownloadMsg").textContent=ok?"Examen copiado ✓":"No se pudo copiar automáticamente.";});});
          target.querySelector("#downloadExamWordBtn").addEventListener("click",function(){downloadExamWord(examPlain,chosen,topic);});
          target.querySelector("#downloadExamPdfBtn").addEventListener("click",function(){downloadExamPdf(examPlain,chosen,topic);});
@@ -1017,27 +1044,6 @@
     });
   }
 
-  // Con 2+ archivos, en vez de gastar cuota de Gemini armamos un prompt detallado
-  // para que la estudiante lo pegue directamente en su cuenta gratis de ChatGPT
-  // (junto con los archivos, que sube ella misma) — no hay forma de automatizar
-  // eso sin una API paga de OpenAI.
-  function buildChatGptPrompt(chosen, topic){
-    var names = chosen.map(function(f){ return f.name; });
-    var cleanTopic = (topic || "").trim();
-    var multi = chosen.length > 1;
-    var lista = names.map(function(n){ return "- " + n; }).join("\n");
-    var intro = "Sos un asistente que ayuda a una estudiante de la carrera de Licenciatura en Enfermería a repasar antes de un examen.\n\n" +
-      "Te voy a adjuntar " + (multi ? "estos apuntes" : "este apunte") + " (subilo" + (multi ? "s" : "") + " antes de responder si todavía no lo" + (multi ? "s" : "") + " ves):\n" + lista + "\n\n";
-    var tarea = cleanTopic
-      ? (multi
-        ? "Buscá en TODOS los archivos adjuntos la información sobre \"" + cleanTopic + "\" y armá UN solo resumen combinado, en español, organizado con subtítulos o viñetas, indicando de qué archivo sale cada parte si hay aportes de más de uno. No inventes información que no esté en los archivos. Si ninguno tiene información sobre \"" + cleanTopic + "\", decilo claramente en vez de inventar un resumen."
-        : "Buscá específicamente la información sobre \"" + cleanTopic + "\" dentro del archivo adjunto y resumí SOLO esa parte, en español, organizada con subtítulos o viñetas, para repasar antes de un examen. No inventes información que no esté en el archivo. Si el archivo no tiene nada sobre \"" + cleanTopic + "\", decilo claramente en vez de inventar un resumen.")
-      : (multi
-        ? "Armá UN solo resumen combinado de todos los archivos adjuntos, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en los archivos."
-        : "Resumí el archivo adjunto, en español, organizado con subtítulos o viñetas para los puntos clave, para repasar antes de un examen. No inventes información que no esté en el archivo.");
-    return intro + tarea;
-  }
-
   function generateSummary(chosen, topic, targetEl, summaryLevel, technicalLevel){
     var target = targetEl || els.preview;
     if (!chosen || !chosen.length) return;
@@ -1065,11 +1071,15 @@
 
           '<div id="summaryText" class="summary-scroll" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(summary) + '</div>' +
           '<div class="summarize-row" style="margin-top:14px;flex-wrap:wrap;">' +
-            '<button type="button" id="copySummaryBtn">Copiar resumen 📋</button>' +
+            '<button type="button" id="readSummaryBtn">Ver en pantalla completa ⛶</button>' +
+            '<button type="button" class="ghost" id="copySummaryBtn">Copiar resumen 📋</button>' +
             '<button type="button" class="ghost" id="downloadPdfBtn">Descargar PDF ↓</button>' +
             '<button type="button" class="ghost" id="downloadWordBtn">Descargar Word ↓</button>' +
           '</div>' +
           '<div id="copySummaryMsg" style="margin-top:6px;font-size:13px;"></div>';
+        target.querySelector("#readSummaryBtn").addEventListener("click", function(){
+          openReader("Resumen con IA", chosen.map(function(f){ return f.name; }).join(" · ") + (cleanTopic ? " — Tema: " + cleanTopic : ""), summary);
+        });
         target.querySelector("#copySummaryBtn").addEventListener("click", function(){
           copyToClipboard(summary).then(function(ok){
             target.querySelector("#copySummaryMsg").textContent = ok ? "Resumen copiado ✓" : "No se pudo copiar automáticamente.";
@@ -1157,47 +1167,6 @@
       return navigator.clipboard.writeText(text).then(function(){ return true; }).catch(function(){ return fallbackCopy(text); });
     }
     return Promise.resolve(fallbackCopy(text));
-  }
-
-  function showChatGptPrompt(chosen, topic, targetEl){
-    var target = targetEl || els.preview;
-    var names = chosen.map(function(f){ return f.name; });
-    var titleLabel = chosen.length > 1 ? "Prompt para ChatGPT (" + chosen.length + " archivos)" : "Prompt para ChatGPT";
-    var pasoUno = chosen.length > 1 ? "1) Descargá cada archivo (no sirve el link de Drive, ChatGPT no puede abrirlo)" : "1) Descargá el archivo (no sirve el link de Drive, ChatGPT no puede abrirlo)";
-    var prompt = buildChatGptPrompt(chosen, topic);
-    var linksHtml = chosen.map(function(f){
-      var openUrl = f.webViewLink || ("https://drive.google.com/file/d/" + f.id + "/view");
-      return '<li style="margin:6px 0;">' + escapeHtml(f.name) +
-        ' — <button type="button" class="small ghost app-download-link" data-file-id="' + escapeHtml(f.id) + '">Descargar ⬇</button>' +
-        ' · <a href="' + escapeHtml(openUrl) + '" target="_blank" rel="noopener">Abrir en Drive ↗</a></li>';
-    }).join("");
-    target.innerHTML =
-      '<div class="preview-title">' + titleLabel + '</div>' +
-      '<div class="preview-path">' + escapeHtml(names.join(" · ")) + '</div>' +
-      '<div class="banner info" style="margin-top:10px;">' + pasoUno + ' &nbsp; 2) Subilo a ChatGPT (arrastralo o clic en el clip 📎) &nbsp; 3) Copiá el prompt y pegalo en el chat</div>' +
-      '<ul style="padding-left:18px;margin:10px 0;">' + linksHtml + '</ul>' +
-      '<textarea id="chatgptPromptBox" readonly rows="10" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px;border-radius:9px;border:1px solid var(--line);">' + escapeHtml(prompt) + '</textarea>' +
-      '<div class="summarize-row" style="margin-top:8px;">' +
-        '<button type="button" id="copyPromptBtn">Copiar prompt 📋</button>' +
-        '<button type="button" class="ghost" id="openChatGptBtn">Abrir ChatGPT ↗</button>' +
-      '</div>' +
-      '<div id="copyPromptMsg" class="muted" style="margin-top:6px;font-size:13px;"></div>';
-    target.querySelector("#copyPromptBtn").addEventListener("click", function(){
-      copyToClipboard(prompt).then(function(ok){
-        target.querySelector("#copyPromptMsg").textContent = ok
-          ? "Prompt copiado ✓ — ahora pegalo en ChatGPT."
-          : "No se pudo copiar automáticamente — seleccioná el texto de arriba y copiá manualmente (Ctrl+C).";
-      });
-    });
-    Array.prototype.forEach.call(target.querySelectorAll(".app-download-link"), function(btn){
-      btn.addEventListener("click", function(){
-        var file = chosen.find(function(f){ return f.id === btn.getAttribute("data-file-id"); });
-        if (file) downloadDriveFile(file);
-      });
-    });
-    target.querySelector("#openChatGptBtn").addEventListener("click", function(){
-      window.open("https://chatgpt.com/", "_blank", "noopener");
-    });
   }
 
   var indexStatusRenderToken = 0;
@@ -1674,6 +1643,9 @@
   }
   document.getElementById("closeIndexBtn").addEventListener("click", closeIndexModal);
   document.getElementById("indexModal").addEventListener("click", function(e){ if(e.target===this) closeIndexModal(); });
+
+  document.getElementById("closeReaderBtn").addEventListener("click", closeReader);
+  document.getElementById("readerModal").addEventListener("click", function(e){ if(e.target===this) closeReader(); });
 
   document.getElementById("closeAiUsageBtn").addEventListener("click", closeAiUsageModal);
   document.getElementById("aiUsageModal").addEventListener("click", function(e){ if(e.target===this) closeAiUsageModal(); });
