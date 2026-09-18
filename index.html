@@ -521,21 +521,29 @@
       .then(function(payload){
         var qs=payload && payload.questions;
         if(!Array.isArray(qs)||!qs.length) throw new Error("La IA no devolvió preguntas.");
-        var html='<div class="preview-title">Preguntas de examen</div>';
-        html+='<div class="preview-path">'+escapeHtml(chosen.map(function(f){return f.name;}).join(" · "))+'</div>';
-        if(topic) html+='<div class="banner info" style="margin-top:10px;">Tema: <strong>'+escapeHtml(topic)+'</strong></div>';
-        qs.forEach(function(q,idx){
-          html+='<div class="question-card"><div class="q-number">PREGUNTA '+(idx+1)+' · '+escapeHtml(q.type||type)+'</div>';
-          html+='<div class="q-text">'+escapeHtml(q.question||"")+'</div>';
-          if(Array.isArray(q.options)&&q.options.length){
-            html+='<ol class="question-options" type="A">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>';
-          }
-          if(includeAnswers){
-            html+='<div class="question-answer"><strong>Respuesta</strong>'+escapeHtml(q.correctAnswer||"")+(q.explanation?'<div style="margin-top:6px;"><strong>Explicación</strong>'+escapeHtml(q.explanation)+'</div>':"")+'</div>';
-          }
-          html+='</div>';
-        });
-        target.innerHTML=html;
+        var reportTitle=topic ? "Examen: "+topic : "Preguntas de examen";
+         var html='<div class="preview-title">'+escapeHtml(reportTitle)+'</div>';
+         html+='<div class="preview-path">'+escapeHtml(chosen.map(function(f){return f.name;}).join(" · "))+'</div>';
+         html+='<div id="examReportScroll" class="summary-scroll" style="max-height:430px;overflow:auto;margin-top:12px;padding-right:8px;">';
+         if(topic) html+='<div class="banner info" style="margin-top:10px;">Tema: <strong>'+escapeHtml(topic)+'</strong></div>';
+         qs.forEach(function(q,idx){
+           html+='<div class="question-card"><div class="q-number">PREGUNTA '+(idx+1)+' · '+escapeHtml(q.type||type)+'</div>';
+           html+='<div class="q-text">'+escapeHtml(q.question||"")+'</div>';
+           if(Array.isArray(q.options)&&q.options.length) html+='<ol class="question-options" type="A">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>';
+           if(includeAnswers) html+='<div class="question-answer"><strong>Respuesta</strong>'+escapeHtml(q.correctAnswer||"")+(q.explanation?'<div style="margin-top:6px;"><strong>Explicación</strong>'+escapeHtml(q.explanation)+'</div>':"")+'</div>';
+           html+='</div>';
+         });
+         html+='</div>';
+         html+='<div class="summarize-row" style="margin-top:12px;flex-wrap:wrap;">' +
+           '<button type="button" id="copyExamBtn">Copiar examen 📋</button>' +
+           '<button type="button" class="ghost" id="downloadExamPdfBtn">Descargar PDF ↓</button>' +
+           '<button type="button" class="ghost" id="downloadExamWordBtn">Descargar Word ↓</button>' +
+         '</div><div id="examDownloadMsg" style="margin-top:6px;font-size:13px;"></div>';
+         target.innerHTML=html;
+         var examPlain=buildExamText(qs,chosen,topic,includeAnswers);
+         target.querySelector("#copyExamBtn").addEventListener("click",function(){copyToClipboard(examPlain).then(function(ok){target.querySelector("#examDownloadMsg").textContent=ok?"Examen copiado ✓":"No se pudo copiar automáticamente.";});});
+         target.querySelector("#downloadExamWordBtn").addEventListener("click",function(){downloadExamWord(examPlain,chosen,topic);});
+         target.querySelector("#downloadExamPdfBtn").addEventListener("click",function(){downloadExamPdf(examPlain,chosen,topic);});
       })
       .catch(function(err){
         target.innerHTML='<div class="preview-title">Preguntas de examen</div><div class="banner danger" style="margin-top:10px;">No se pudo generar el examen ('+escapeHtml(err.message||"error")+').</div>';
@@ -543,7 +551,35 @@
       .finally(function(){if(btn){btn.disabled=false;btn.textContent="Generar examen";}});
   }
 
-  function friendlyDeleteError(err){
+  function buildExamText(qs,chosen,topic,includeAnswers){
+     var out=(topic ? "EXAMEN: "+topic : "PREGUNTAS DE EXAMEN")+"\n\n";
+     out+="Material: "+chosen.map(function(f){return f.name;}).join(" · ")+"\n\n";
+     qs.forEach(function(q,idx){
+       out+="PREGUNTA "+(idx+1)+" — "+(q.type||"")+"\n"+(q.question||"")+"\n";
+       if(Array.isArray(q.options)) q.options.forEach(function(o,i){out+=String.fromCharCode(65+i)+") "+o+"\n";});
+       if(includeAnswers){out+="Respuesta: "+(q.correctAnswer||"")+"\n";if(q.explanation) out+="Explicación: "+q.explanation+"\n";}
+       out+="\n";
+     });
+     return out;
+   }
+   function downloadExamWord(textContent,chosen,topic){
+     var title=topic ? "Examen: "+topic : "Preguntas de examen";
+     var names=chosen.map(function(f){return f.name;}).join(" · ");
+     var html='<!doctype html><html><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>body{font-family:Arial,sans-serif;margin:2cm;line-height:1.5;color:#222;white-space:pre-wrap}h1{font-size:20pt}p{color:#666;font-size:10pt;border-bottom:1px solid #ddd;padding-bottom:10px}</style></head><body><h1>'+escapeHtml(title)+'</h1><p>'+escapeHtml(names)+'</p>'+escapeHtml(textContent).replace(/\n/g,"<br>")+'</body></html>';
+     var blob=new Blob(["\ufeff",html],{type:"application/msword"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+     a.href=url;a.download=safeDownloadName(chosen,topic)+"_examen.doc";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},1000);
+   }
+   function downloadExamPdf(textContent,chosen,topic){
+     if(!window.jspdf||!window.jspdf.jsPDF){alert("No se pudo cargar el generador de PDF. Recargá la página e intentá nuevamente.");return;}
+     var JsPDF=window.jspdf.jsPDF,doc=new JsPDF({unit:"mm",format:"a4"}),title=topic ? "Examen: "+topic : "Preguntas de examen";
+     var names=chosen.map(function(f){return f.name;}).join(" · "),margin=18,pageWidth=210,pageHeight=297,y=20;
+     doc.setFont("helvetica","bold");doc.setFontSize(16);doc.text(doc.splitTextToSize(title,pageWidth-margin*2),margin,y);y+=12;
+     doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.text(doc.splitTextToSize(names,pageWidth-margin*2),margin,y);y+=10;
+     doc.setFontSize(10.5);doc.splitTextToSize(textContent,pageWidth-margin*2).forEach(function(line){if(y>pageHeight-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=5.3;});
+     doc.save(safeDownloadName(chosen,topic)+"_examen.pdf");
+   }
+
+   function friendlyDeleteError(err){
     var msg = String((err && err.message) || "");
     if (msg === "NOT_REMOVABLE" || /insufficient permissions|permission/i.test(msg)){
       return "No se puede eliminar ni quitar: este archivo no es tuyo ni de Rossana — se lo compartió otra persona con permisos muy restringidos (ni siquiera se puede sacar de la carpeta). No hay forma de arreglar esto desde acá; si molesta, pedile a quien lo compartió que lo borre, o simplemente ignoralo.";
