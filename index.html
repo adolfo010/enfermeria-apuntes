@@ -592,6 +592,7 @@
     document.getElementById("indexTitle").textContent="Índice del material";
     document.getElementById("indexSubtitle").textContent=file.name||"";
     var idx=data && data.index, job=data && data.job;
+    if(job && data && data.fingerprint && job.file_fingerprint !== data.fingerprint) job=null;
     var html='';
     if(idx){
       html+='<div class="banner info" style="margin-top:14px;">🟢 Índice disponible · '+escapeHtml(String(idx.topics?.length||0))+' temas/subtemas · '+escapeHtml(String(idx.page_count||0))+' páginas.</div>';
