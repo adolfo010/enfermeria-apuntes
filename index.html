@@ -14,12 +14,12 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
   :root{
-    --bg:#FCF1F5;
+    --bg:#F4F3F5;
     --surface:#FFFFFF;
-    --surface-2:#F8E3EC;
-    --ink:#1A1417;
-    --muted:#6B4F58;
-    --line:#F2D3E1;
+    --surface-2:#EEEBEE;
+    --ink:#18161A;
+    --muted:#5F5A63;
+    --line:#E2DFE3;
     --accent:#D9688F;
     --accent-ink:#FFFFFF;
     --accent-soft:#FBE1EA;
@@ -35,15 +35,15 @@
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#2B1D25; --surface:#3B2732; --surface-2:#4A3340; --ink:#FBF4F7; --muted:#D9B7C4;
-      --line:#5A3F4C; --accent:#EA95B4; --accent-ink:#1A1115; --accent-soft:#4F2E3B;
+      --bg:#221F23; --surface:#2C292E; --surface-2:#38343A; --ink:#F6F4F6; --muted:#B5AFB8;
+      --line:#454049; --accent:#EA95B4; --accent-ink:#1A1115; --accent-soft:#4F2E3B;
       --warn:#E4A467; --warn-soft:#432F1E; --good:#8ECBAD; --good-soft:#25382E;
       --danger:#E58F8E; --danger-soft:#432525; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
     }
   }
   :root[data-theme="dark"]{
-    --bg:#2B1D25; --surface:#3B2732; --surface-2:#4A3340; --ink:#FBF4F7; --muted:#D9B7C4;
-    --line:#5A3F4C; --accent:#EA95B4; --accent-ink:#1A1115; --accent-soft:#4F2E3B;
+    --bg:#221F23; --surface:#2C292E; --surface-2:#38343A; --ink:#F6F4F6; --muted:#B5AFB8;
+    --line:#454049; --accent:#EA95B4; --accent-ink:#1A1115; --accent-soft:#4F2E3B;
     --warn:#E4A467; --warn-soft:#432F1E; --good:#8ECBAD; --good-soft:#25382E;
     --danger:#E58F8E; --danger-soft:#432525; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px rgba(0,0,0,0.35);
   }
@@ -151,6 +151,13 @@
   @media (max-width:600px){.exam-controls{grid-template-columns:1fr;}}
   .summary-scroll{max-height:430px;overflow:auto;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+
+  .tool-tabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin-top:16px;}
+  .tool-tab{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-2px;padding:9px 14px;font:inherit;font-weight:600;font-size:14.5px;color:var(--muted);cursor:pointer;border-radius:0;}
+  .tool-tab:hover{color:var(--ink);filter:none;background:none;}
+  .tool-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .tool-panel{padding-top:12px;}
+  .tool-panel[hidden]{display:none;}
 
   .index-modal{position:fixed;inset:0;background:rgba(26,20,23,.48);display:none;align-items:center;justify-content:center;padding:20px;z-index:1100;}
   .index-modal.open{display:flex;}
@@ -800,27 +807,36 @@
       '<button type="button" class="ghost" id="deleteBtn">Eliminar 🗑</button><button type="button" class="ghost" id="indexBtn">Índice 📑</button>' +
     '</div>' +
     '<div id="previewActionMsg"></div>' +
-    '<div class="summarize-row">' +
-      '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
-      '<button type="button" class="ghost" id="summarizeBtn">Generar resumen con IA ✨</button>' +
+    '<div class="tool-tabs">' +
+      '<button type="button" class="tool-tab active" data-tab="resumen">Resumen ✨</button>' +
+      '<button type="button" class="tool-tab" data-tab="examen">Examen 📝</button>' +
+      '<button type="button" class="tool-tab" data-tab="preguntas">Preguntas 💬</button>' +
     '</div>' +
-    '<div class="preview-path" style="margin-top:14px;">Generar examen 📝</div>' +
-    '<div id="examControls" class="exam-controls">' +
-      '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
-      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
-      '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
-      '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
-      '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+    '<div class="tool-panel" data-panel="resumen">' +
+      '<div class="summarize-row">' +
+        '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
+        '<button type="button" class="ghost" id="summarizeBtn">Generar resumen con IA ✨</button>' +
+      '</div>' +
+      '<div id="summaryResult"></div>' +
     '</div>' +
-    '<div class="preview-path" style="margin-top:14px;">Preguntá algo puntual 💬</div>' +
-    '<div class="summarize-row">' +
-      '<input type="text" id="askQuestionInput" placeholder="Ej: ¿Cuáles son las partes de la neurona?">' +
-      '<button type="button" class="ghost" id="askQuestionBtn">Preguntar ❓</button>' +
+    '<div class="tool-panel" data-panel="examen" hidden>' +
+      '<div id="examControls" class="exam-controls">' +
+        '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
+        '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
+        '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
+        '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
+        '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+      '</div>' +
+      '<div id="examResult"></div>' +
     '</div>' +
-    '<button type="button" class="ghost small" id="viewPeopleBtn" style="margin-top:6px;">Ver personas mencionadas 👤</button>' +
-    '<div id="summaryResult"></div>' +
-    '<div id="examResult"></div>' +
-    '<div id="askResult"></div>';
+    '<div class="tool-panel" data-panel="preguntas" hidden>' +
+      '<div class="summarize-row">' +
+        '<input type="text" id="askQuestionInput" placeholder="Ej: ¿Cuáles son las partes de la neurona?">' +
+        '<button type="button" class="ghost" id="askQuestionBtn">Preguntar ❓</button>' +
+      '</div>' +
+      '<button type="button" class="ghost small" id="viewPeopleBtn" style="margin-top:6px;">Ver personas mencionadas 👤</button>' +
+      '<div id="askResult"></div>' +
+    '</div>';
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
@@ -828,6 +844,18 @@
     document.getElementById("viewPeopleBtn").addEventListener("click", function(){
       pendingIndexFilter = "personas";
       openIndexForFile(file);
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll(".tool-tab"), function(tab){
+      tab.addEventListener("click", function(){
+        var name = tab.getAttribute("data-tab");
+        Array.prototype.forEach.call(document.querySelectorAll(".tool-tab"), function(t){
+          t.classList.toggle("active", t === tab);
+        });
+        Array.prototype.forEach.call(document.querySelectorAll(".tool-panel"), function(p){
+          p.hidden = p.getAttribute("data-panel") !== name;
+        });
+      });
     });
 
     document.getElementById("downloadDriveBtn").addEventListener("click", function(){
