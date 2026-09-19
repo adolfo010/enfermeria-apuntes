@@ -645,7 +645,7 @@
       html+='<div class="index-topics" id="indexTopicsList">'+renderIndexTopics(idx)+'</div>';
       html+='<div class="index-empty" id="indexTopicsNoMatch" style="display:none;">Ningún tema coincide con "<span id="indexTopicsNoMatchTerm"></span>".</div>';
       html+='<div class="muted" style="font-size:12px;margin-top:8px;">Seleccioná un solo tema para generar un resumen o un examen. El índice queda guardado para volver a utilizarlo.</div>';
-      html+='<div class="index-actions"><button type="button" id="indexSummarizeSelected">Generar resumen del tema seleccionado ✨</button><button type="button" id="indexExamSelected">Generar examen del tema 📝</button><button type="button" class="ghost" id="indexRefreshBtn">Actualizar estado</button></div>';
+      html+='<div class="index-actions"><button type="button" id="indexSummarizeSelected">Generar resumen del tema seleccionado ✨</button><button type="button" id="indexExamSelected">Generar examen del tema 📝</button><button type="button" class="ghost" id="indexRefreshBtn">Actualizar estado</button>'+(currentUserRole==="ADMIN"?'<button type="button" class="ghost" id="indexRegenerateBtn">Regenerar índice ↻</button>':'')+'</div>';
     }else if(job && (job.status==="running"||job.status==="pending"||job.status==="paused"||job.status==="error")){
       var total=Number(job.total_pages||0),done=Number(job.processed_pages||0),pct=total?Math.min(100,Math.round(done*100/total)):0;
       html+='<div class="index-progress"><div class="index-progress-row"><strong>'+ (job.status==="paused"?"⏸ Pausado":job.status==="error"?"⚠ Con error":"⏳ Analizando índice…") +'</strong><span>'+done+' / '+total+' páginas · '+pct+'%</span></div><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%;"></div></div>';
@@ -729,6 +729,10 @@
     if(cancel)cancel.addEventListener("click",function(){if(confirm("¿Cancelar esta indexación? Se conservará el progreso ya realizado."))controlIndex("cancel",job.id,file);});
     var refresh=content.querySelector("#indexRefreshBtn");
     if(refresh)refresh.addEventListener("click",function(){refreshIndexModal(file);});
+    var regenerate=content.querySelector("#indexRegenerateBtn");
+    if(regenerate)regenerate.addEventListener("click",function(){
+      if(confirm("¿Regenerar el índice de \""+(file.name||"")+"\"? Se descarta el índice actual (compartido entre admins) y se vuelve a analizar el archivo completo, consumiendo presupuesto de IA."))startIndexForFile(file,true);
+    });
 
     if(job && (job.status==="running"||job.status==="pending")) scheduleIndexPoll(file,2500);
   }
@@ -749,10 +753,10 @@
     }).finally(function(){indexPollBusy=false;});
   }
 
-  function startIndexForFile(file){
+  function startIndexForFile(file,force){
     var c=document.getElementById("indexContent");
     if(c)c.innerHTML='<div class="banner info" style="margin-top:14px;"><span class="spin"></span>&nbsp; Preparando la indexación del material…</div>';
-    callDrive({action:"indexStart",fileId:file.id,fileName:file.name,mimeType:file.mimeType||"application/pdf"}).then(function(data){
+    callDrive({action:"indexStart",fileId:file.id,fileName:file.name,mimeType:file.mimeType||"application/pdf",force:!!force}).then(function(data){
       renderIndexModal(file,data);
       if(data.job) scheduleIndexPoll(file,1200);
     }).catch(function(err){

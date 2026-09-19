@@ -614,7 +614,36 @@ Deno.serve(async (req: Request) => {
 
 
     if(action==="indexStatus"){const fileId=String(body.fileId||"").trim();if(!fileId)return cors(new Response(JSON.stringify({error:"Falta fileId"}),{status:400}));const meta=await getDriveMetaForIndex(fileId,accessToken),fp=indexFingerprint(meta);return cors(new Response(JSON.stringify({ok:true,fingerprint:fp,index:await getCurrentIndex(user.id,fileId,fp),job:await getLatestIndexJob(user.id,fileId)}),{headers:{"Content-Type":"application/json"}}));}
-    if(action==="indexStart"){if(!OPENAI_API_KEY)throw new Error("OPENAI_NOT_CONFIGURED");const fileId=String(body.fileId||"").trim();if(!fileId)return cors(new Response(JSON.stringify({error:"Falta fileId"}),{status:400}));const meta=await getDriveMetaForIndex(fileId,accessToken),fp=indexFingerprint(meta),existing=await getCurrentIndex(user.id,fileId,fp);if(existing)return cors(new Response(JSON.stringify({ok:true,reused:true,index:existing,job:null}),{headers:{"Content-Type":"application/json"}}));const latest=await getLatestIndexJob(user.id,fileId);if(latest&&["pending","running","paused"].includes(latest.status)&&latest.file_fingerprint===fp)return cors(new Response(JSON.stringify({ok:true,resumed:true,index:null,job:latest}),{headers:{"Content-Type":"application/json"}}));const content=await getSummarizableContent(fileId,meta.mimeType,accessToken);if(content.bytes.length>MAX_SUMMARIZE_BYTES)throw new Error("TOO_LARGE");const pdf=content.mime==="application/pdf"?await PDFDocument.load(content.bytes,{ignoreEncryption:true}):null;const pages=pdf?pdf.getPageCount():1,total=content.mime==="application/pdf"?Math.ceil(pages/3):1;const ir=await rest("ai_index_jobs",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({user_id:user.id,drive_file_id:fileId,file_name:meta.name||"apunte",mime_type:meta.mimeType||"application/pdf",file_fingerprint:fp,status:"running",total_pages:pages,chunk_pages:3,total_chunks:total,next_chunk:0,processed_pages:0,topics:[],model:OPENAI_MODEL})});if(!ir.ok)throw new Error("No se pudo crear el trabajo de indexación: "+await ir.text());const job=(await ir.json())?.[0];if(!job)throw new Error("No se pudo crear el trabajo de indexación");EdgeRuntime.waitUntil(runIndexJob(job.id,user,accessToken,content));return cors(new Response(JSON.stringify({ok:true,index:null,job}),{headers:{"Content-Type":"application/json"}}));}
+    if(action==="indexStart"){
+      if(!OPENAI_API_KEY)throw new Error("OPENAI_NOT_CONFIGURED");
+      const fileId=String(body.fileId||"").trim();
+      if(!fileId)return cors(new Response(JSON.stringify({error:"Falta fileId"}),{status:400}));
+      const force=body.force===true;
+      const meta=await getDriveMetaForIndex(fileId,accessToken),fp=indexFingerprint(meta);
+      if(force){
+        // Regenerar a pedido: requiere ADMIN porque descarta el índice
+        // compartido actual (y el gasto de IA que costó generarlo) para
+        // todos los admins, no solo para quien lo pide.
+        requireAdmin(user);
+        await rest(`ai_document_indexes?drive_file_id=eq.${encodeURIComponent(fileId)}`,{method:"DELETE"});
+        await rest(`ai_index_jobs?drive_file_id=eq.${encodeURIComponent(fileId)}`,{method:"DELETE"});
+      }else{
+        const existing=await getCurrentIndex(user.id,fileId,fp);
+        if(existing)return cors(new Response(JSON.stringify({ok:true,reused:true,index:existing,job:null}),{headers:{"Content-Type":"application/json"}}));
+        const latest=await getLatestIndexJob(user.id,fileId);
+        if(latest&&["pending","running","paused"].includes(latest.status)&&latest.file_fingerprint===fp)return cors(new Response(JSON.stringify({ok:true,resumed:true,index:null,job:latest}),{headers:{"Content-Type":"application/json"}}));
+      }
+      const content=await getSummarizableContent(fileId,meta.mimeType,accessToken);
+      if(content.bytes.length>MAX_SUMMARIZE_BYTES)throw new Error("TOO_LARGE");
+      const pdf=content.mime==="application/pdf"?await PDFDocument.load(content.bytes,{ignoreEncryption:true}):null;
+      const pages=pdf?pdf.getPageCount():1,total=content.mime==="application/pdf"?Math.ceil(pages/3):1;
+      const ir=await rest("ai_index_jobs",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({user_id:user.id,drive_file_id:fileId,file_name:meta.name||"apunte",mime_type:meta.mimeType||"application/pdf",file_fingerprint:fp,status:"running",total_pages:pages,chunk_pages:3,total_chunks:total,next_chunk:0,processed_pages:0,topics:[],model:OPENAI_MODEL})});
+      if(!ir.ok)throw new Error("No se pudo crear el trabajo de indexación: "+await ir.text());
+      const job=(await ir.json())?.[0];
+      if(!job)throw new Error("No se pudo crear el trabajo de indexación");
+      EdgeRuntime.waitUntil(runIndexJob(job.id,user,accessToken,content));
+      return cors(new Response(JSON.stringify({ok:true,index:null,job}),{headers:{"Content-Type":"application/json"}}));
+    }
     if(action==="indexRun"){const jobId=Number(body.jobId);if(!jobId)return cors(new Response(JSON.stringify({error:"Falta jobId"}),{status:400}));const jr=await rest(`ai_index_jobs?select=*&id=eq.${jobId}&limit=1`);if(!jr.ok)throw new Error("No se pudo consultar el trabajo de indexación");const job=(await jr.json())?.[0];if(!job)throw new Error("INDEX_JOB_NOT_FOUND");if(["completed","cancelled","paused","running"].includes(job.status))return cors(new Response(JSON.stringify({ok:true,job,alreadyRunning:job.status==="running"}),{headers:{"Content-Type":"application/json"}}));await rest(`ai_index_jobs?id=eq.${jobId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:"running",error_message:null,updated_at:new Date().toISOString()})});EdgeRuntime.waitUntil(runIndexJob(jobId,user,accessToken));return cors(new Response(JSON.stringify({ok:true,started:true,job}),{headers:{"Content-Type":"application/json"}}));}
     if(action==="indexControl"){const jobId=Number(body.jobId),control=String(body.control||"");if(!jobId||!["pause","resume","cancel"].includes(control))return cors(new Response(JSON.stringify({error:"Datos de control inválidos"}),{status:400}));const jr=await rest(`ai_index_jobs?select=*&id=eq.${jobId}&limit=1`);if(!jr.ok)throw new Error("No se pudo consultar el trabajo de indexación");const job=(await jr.json())?.[0];if(!job)throw new Error("INDEX_JOB_NOT_FOUND");const st=control==="pause"?"paused":control==="cancel"?"cancelled":"pending";await rest(`ai_index_jobs?id=eq.${jobId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:st,error_message:control==="cancel"?"Cancelado por el usuario.":null,updated_at:new Date().toISOString()})});if(control==="resume")EdgeRuntime.waitUntil(runIndexJob(jobId,user,accessToken));return cors(new Response(JSON.stringify({ok:true,status:st}),{headers:{"Content-Type":"application/json"}}));}
 
