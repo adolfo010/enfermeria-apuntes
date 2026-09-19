@@ -1170,32 +1170,42 @@
           '<div class="muted" style="font-size:12px;margin-top:4px;">Usá esta opción solo si querés buscar una cosa y resumir otra.</div>' +
         '</div>' +
       '</div>' +
-      '<div class="summary-controls" style="flex-basis:100%;">' +
-        '<div class="summary-control">' +
-          '<label for="summaryLevel">Nivel de resumen <strong id="summaryLevelValue">3 — Equilibrado</strong></label>' +
-          '<input type="range" id="summaryLevel" min="1" max="5" step="1" value="3">' +
-          '<div class="scale-label"><span>Breve</span><span>Muy detallado</span></div>' +
-        '</div>' +
-        '<div class="summary-control">' +
-          '<label for="technicalLevel">Nivel de tecnicismo <strong id="technicalLevelValue">3 — Académico</strong></label>' +
-          '<input type="range" id="technicalLevel" min="1" max="5" step="1" value="3">' +
-          '<div class="scale-label"><span>Introductorio</span><span>Profesional</span></div>' +
-        '</div>' +
-      '</div>' +
-      '<button type="button" id="multiSummarizeBtn">Generar resumen con IA ✨</button>' +
-      '<button type="button" id="multiExamBtn">Preguntas de examen 📝</button>' +
       '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>' +
-      '<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<input type="text" id="multiQuestionInput" placeholder="Preguntá algo puntual sobre los archivos seleccionados 💬">' +
-        '<button type="button" class="ghost" id="multiAskBtn">Preguntar ❓</button>' +
+      '<div class="tool-tabs" style="flex-basis:100%;">' +
+        '<button type="button" class="tool-tab active" data-multitab="resumen">Resumen ✨</button>' +
+        '<button type="button" class="tool-tab" data-multitab="examen">Examen 📝</button>' +
+        '<button type="button" class="tool-tab" data-multitab="preguntas">Preguntas 💬</button>' +
       '</div>' +
-      '<button type="button" class="ghost small" id="multiViewPeopleBtn" style="flex-basis:100%;">Ver personas mencionadas 👤</button>' +
-      '<div id="multiExamControls" class="exam-controls" style="display:none;flex-basis:100%;">' +
-        '<div><label for="multiExamCount">Cantidad</label><select id="multiExamCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
-        '<div><label for="multiExamType">Tipo</label><select id="multiExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
-        '<div><label for="multiExamDifficulty">Dificultad</label><select id="multiExamDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
-        '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="multiExamAnswers" checked> Mostrar respuestas y explicación</label>' +
-        '<button type="button" id="generateMultiExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+      '<div class="tool-panel" data-multipanel="resumen" style="flex-basis:100%;">' +
+        '<div class="summary-controls">' +
+          '<div class="summary-control">' +
+            '<label for="summaryLevel">Nivel de resumen <strong id="summaryLevelValue">3 — Equilibrado</strong></label>' +
+            '<input type="range" id="summaryLevel" min="1" max="5" step="1" value="3">' +
+            '<div class="scale-label"><span>Breve</span><span>Muy detallado</span></div>' +
+          '</div>' +
+          '<div class="summary-control">' +
+            '<label for="technicalLevel">Nivel de tecnicismo <strong id="technicalLevelValue">3 — Académico</strong></label>' +
+            '<input type="range" id="technicalLevel" min="1" max="5" step="1" value="3">' +
+            '<div class="scale-label"><span>Introductorio</span><span>Profesional</span></div>' +
+          '</div>' +
+        '</div>' +
+        '<button type="button" id="multiSummarizeBtn" style="margin-top:10px;">Generar resumen con IA ✨</button>' +
+      '</div>' +
+      '<div class="tool-panel" data-multipanel="examen" style="flex-basis:100%;" hidden>' +
+        '<div id="multiExamControls" class="exam-controls">' +
+          '<div><label for="multiExamCount">Cantidad</label><select id="multiExamCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
+          '<div><label for="multiExamType">Tipo</label><select id="multiExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
+          '<div><label for="multiExamDifficulty">Dificultad</label><select id="multiExamDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
+          '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="multiExamAnswers" checked> Mostrar respuestas y explicación</label>' +
+          '<button type="button" id="generateMultiExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="tool-panel" data-multipanel="preguntas" style="flex-basis:100%;" hidden>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<input type="text" id="multiQuestionInput" placeholder="Preguntá algo puntual sobre los archivos seleccionados 💬">' +
+          '<button type="button" class="ghost" id="multiAskBtn">Preguntar ❓</button>' +
+        '</div>' +
+        '<button type="button" class="ghost small" id="multiViewPeopleBtn" style="margin-top:8px;">Ver personas mencionadas 👤</button>' +
       '</div>';
 
     document.getElementById("changeAiTopicBtn").addEventListener("click", function(){
@@ -1207,6 +1217,18 @@
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
       renderResults(lastSearchResults);
+    });
+
+    Array.prototype.forEach.call(bar.querySelectorAll(".tool-tab"), function(tab){
+      tab.addEventListener("click", function(){
+        var name = tab.getAttribute("data-multitab");
+        Array.prototype.forEach.call(bar.querySelectorAll(".tool-tab"), function(t){
+          t.classList.toggle("active", t === tab);
+        });
+        Array.prototype.forEach.call(bar.querySelectorAll(".tool-panel"), function(p){
+          p.hidden = p.getAttribute("data-multipanel") !== name;
+        });
+      });
     });
 
     document.getElementById("multiAskBtn").addEventListener("click", function(){
@@ -1243,11 +1265,6 @@
     document.getElementById("summaryLevel").addEventListener("input", updateSummaryControls);
     document.getElementById("technicalLevel").addEventListener("input", updateSummaryControls);
     updateSummaryControls();
-
-    document.getElementById("multiExamBtn").addEventListener("click", function(){
-      var box=document.getElementById("multiExamControls");
-      box.style.display=box.style.display==="none" ? "grid" : "none";
-    });
 
     document.getElementById("generateMultiExamBtn").addEventListener("click", function(){
       var topic=getAiTopic();
