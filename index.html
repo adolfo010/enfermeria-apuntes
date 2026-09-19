@@ -609,13 +609,18 @@
     indexPollTimer=setTimeout(function(){ refreshIndexModal(file); }, delay || 2500);
   }
 
+  function normalizeForFilter(s){
+    return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim();
+  }
+
   function renderIndexTopics(index){
     var topics=Array.isArray(index && index.topics) ? index.topics : [];
     if(!topics.length) return '<div class="index-empty">El índice terminó sin temas identificables en el material.</div>';
     var html='';
     topics.forEach(function(t,i){
       var child=!!(t.parent && String(t.parent).trim());
-      html+='<label class="index-topic '+(child?'child':'')+'">' +
+      var searchKey=normalizeForFilter((t.title||"")+" "+(t.parent||""));
+      html+='<label class="index-topic '+(child?'child':'')+'" data-search="'+escapeHtml(searchKey)+'">' +
         '<input type="checkbox" class="index-topic-check" data-index-topic="'+i+'">' +
         '<span class="topic-name">'+escapeHtml(t.title||"")+(child?' <span style="color:var(--muted);">· '+escapeHtml(t.parent)+'</span>':'')+'</span>' +
         '<span class="topic-page">pág. '+escapeHtml(String(t.page_start||""))+'–'+escapeHtml(String(t.page_end||""))+'</span>' +
@@ -636,7 +641,9 @@
     var html='';
     if(idx){
       html+='<div class="banner info" style="margin-top:14px;">🟢 Índice disponible · '+escapeHtml(String(idx.topics?.length||0))+' temas/subtemas · '+escapeHtml(String(idx.page_count||0))+' páginas.</div>';
-      html+='<div class="index-topics">'+renderIndexTopics(idx)+'</div>';
+      html+='<input type="text" id="indexTopicFilter" placeholder="Filtrar temas (ej: personas, neurona)…" style="width:100%;box-sizing:border-box;margin-top:10px;font:inherit;font-size:14px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);">';
+      html+='<div class="index-topics" id="indexTopicsList">'+renderIndexTopics(idx)+'</div>';
+      html+='<div class="index-empty" id="indexTopicsNoMatch" style="display:none;">Ningún tema coincide con "<span id="indexTopicsNoMatchTerm"></span>".</div>';
       html+='<div class="muted" style="font-size:12px;margin-top:8px;">Seleccioná un solo tema para generar un resumen o un examen. El índice queda guardado para volver a utilizarlo.</div>';
       html+='<div class="index-actions"><button type="button" id="indexSummarizeSelected">Generar resumen del tema seleccionado ✨</button><button type="button" id="indexExamSelected">Generar examen del tema 📝</button><button type="button" class="ghost" id="indexRefreshBtn">Actualizar estado</button></div>';
     }else if(job && (job.status==="running"||job.status==="pending"||job.status==="paused"||job.status==="error")){
@@ -654,6 +661,24 @@
       html+='<div class="index-actions"><button type="button" id="indexStartBtn">Analizar y crear índice 📑</button></div>';
     }
     content.innerHTML=html;
+
+    var topicFilter=content.querySelector("#indexTopicFilter");
+    if(topicFilter)topicFilter.addEventListener("input",function(){
+      var needle=normalizeForFilter(this.value);
+      var rows=content.querySelectorAll("#indexTopicsList .index-topic");
+      var anyVisible=false;
+      rows.forEach(function(row){
+        var match=!needle || (row.getAttribute("data-search")||"").indexOf(needle)!==-1;
+        row.style.display=match?"":"none";
+        if(match)anyVisible=true;
+      });
+      var noMatch=content.querySelector("#indexTopicsNoMatch");
+      if(noMatch){
+        noMatch.style.display=(needle&&!anyVisible)?"":"none";
+        var term=content.querySelector("#indexTopicsNoMatchTerm");
+        if(term)term.textContent=this.value;
+      }
+    });
 
     var checks=content.querySelectorAll(".index-topic-check");
     checks.forEach(function(ch){ch.addEventListener("change",function(){checks.forEach(function(other){if(other!==ch)other.checked=false;});});});
