@@ -311,7 +311,8 @@
       <div id="userBar" style="display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;"></div>
     </div>
     <form class="searchbar" id="searchForm">
-      <input id="searchInput" type="text" placeholder="Buscar por título, materia o contenido…" autocomplete="off">
+      <input id="searchInput" type="text" placeholder="Buscar por título, materia o contenido…" autocomplete="off" list="recentSearches">
+      <datalist id="recentSearches"></datalist>
       <button type="submit" id="searchBtn">Buscar</button>
       <button type="button" class="ghost" id="uploadBtn">Subir material ⬆</button>
       <input type="file" id="uploadInput" multiple style="display:none;">
@@ -1305,9 +1306,39 @@
 
   var lastSearchResults = null;
 
+  var RECENT_SEARCHES_KEY = "enfermeriaRoxy.recentSearches";
+
+  function getRecentSearches(){
+    try {
+      var raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (_e) { return []; }
+  }
+
+  function renderRecentSearches(){
+    var datalist = document.getElementById("recentSearches");
+    if (!datalist) return;
+    datalist.innerHTML = getRecentSearches().map(function(t){
+      return '<option value="' + escapeHtml(t) + '"></option>';
+    }).join("");
+  }
+
+  function saveRecentSearch(term){
+    try {
+      var list = getRecentSearches().filter(function(t){
+        return t.toLowerCase() !== term.toLowerCase();
+      });
+      list.unshift(term);
+      localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(list.slice(0, 5)));
+      renderRecentSearches();
+    } catch (_e) { /* localStorage no disponible (modo privado, etc.) — sin sugerencias, sin romper la búsqueda */ }
+  }
+
   function runSearch(term){
     term = term.trim();
     if (!term) return;
+    saveRecentSearch(term);
     selectedIds = {};
     document.getElementById("multiSelectBar").style.display = "none";
     els.results.innerHTML = '<div class="empty-state"><span class="spin"></span>&nbsp; Buscando…</div>';
@@ -1746,6 +1777,7 @@
       document.getElementById("appShell").style.display = "flex";
       __appStarted = true;
       registerServiceWorker();
+      renderRecentSearches();
 
       var params = new URLSearchParams(location.search);
       var wasShare = params.get("share") === "1";
