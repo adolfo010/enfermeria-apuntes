@@ -969,29 +969,59 @@
         .then(function(data){ return { file:f, data:data }; })
         .catch(function(){ return { file:f, data:null }; });
     })).then(function(results){
-      var lines = [];
+      var groups = [];
       var notIndexed = [];
       results.forEach(function(r){
         var idx = r.data && r.data.index;
         if (!idx || !Array.isArray(idx.topics)){ notIndexed.push(r.file.name); return; }
         var people = idx.topics.filter(function(t){
           return normalizeForFilter(t.parent || "") === "personas mencionadas";
-        });
+        }).map(function(t){ return t.title; });
         if (!people.length) return;
-        lines.push(r.file.name + ":");
-        people.forEach(function(p){ lines.push("  - " + p.title); });
-        lines.push("");
+        groups.push({ fileName:r.file.name, people:people });
       });
-      var text = lines.join("\n").trim();
-      if (!text){
-        text = "No se encontraron personas mencionadas en el índice de los archivos seleccionados.";
-        if (notIndexed.length) text += "\n\nSin índice generado (no se pudieron revisar): " + notIndexed.join(", ") + ".";
-      } else if (notIndexed.length){
-        text += "\n\n(Sin índice generado, no revisados: " + notIndexed.join(", ") + ".)";
-      }
-      openReader("Personas mencionadas", chosen.map(function(f){ return f.name; }).join(" · "), text);
+      openPeopleReader("Personas mencionadas", chosen.map(function(f){ return f.name; }).join(" · "), groups, notIndexed);
     }).finally(function(){
       if (btn){ btn.disabled = false; btn.textContent = "Ver personas mencionadas 👤"; }
+    });
+  }
+
+  function openPeopleReader(title, meta, groups, notIndexed){
+    var modal = document.getElementById("readerModal");
+    document.getElementById("readerTitle").textContent = title || "";
+    document.getElementById("readerMeta").textContent = meta || "";
+    var body = document.getElementById("readerBody");
+    var html = "";
+    if (!groups.length){
+      html += '<div class="muted">No se encontraron personas mencionadas en el índice de los archivos seleccionados.</div>';
+    } else {
+      html += '<div class="muted" style="font-size:14px;margin-bottom:10px;">Tocá un nombre para preguntar sobre esa persona.</div>';
+      groups.forEach(function(g){
+        html += '<div class="preview-path" style="margin-top:14px;">' + escapeHtml(g.fileName) + ':</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">';
+        g.people.forEach(function(p){
+          html += '<button type="button" class="ghost small person-chip" data-person="' + escapeHtml(p) + '">' + escapeHtml(p) + ' 👤</button>';
+        });
+        html += '</div>';
+      });
+    }
+    if (notIndexed && notIndexed.length){
+      html += '<div class="banner info" style="margin-top:14px;">Sin índice generado (no se pudieron revisar): ' + escapeHtml(notIndexed.join(", ")) + '.</div>';
+    }
+    body.innerHTML = html;
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden","false");
+    body.querySelectorAll(".person-chip").forEach(function(chip){
+      chip.addEventListener("click", function(){
+        var name = chip.getAttribute("data-person");
+        closeReader();
+        var input = document.getElementById("multiQuestionInput") || document.getElementById("askQuestionInput");
+        if (input){
+          input.value = "¿Quién fue " + name + " y qué aportó?";
+          input.focus();
+          if (input.scrollIntoView) input.scrollIntoView({behavior:"smooth", block:"center"});
+        }
+      });
     });
   }
 
