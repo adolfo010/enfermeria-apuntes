@@ -956,6 +956,41 @@
       });
   }
 
+  function viewPeopleAcrossFiles(chosen){
+    if (!chosen || !chosen.length) return;
+    var btn = document.getElementById("multiViewPeopleBtn");
+    if (btn){ btn.disabled = true; btn.textContent = "Buscando personas…"; }
+    Promise.all(chosen.map(function(f){
+      return callDrive({ action:"indexStatus", fileId:f.id })
+        .then(function(data){ return { file:f, data:data }; })
+        .catch(function(){ return { file:f, data:null }; });
+    })).then(function(results){
+      var lines = [];
+      var notIndexed = [];
+      results.forEach(function(r){
+        var idx = r.data && r.data.index;
+        if (!idx || !Array.isArray(idx.topics)){ notIndexed.push(r.file.name); return; }
+        var people = idx.topics.filter(function(t){
+          return normalizeForFilter(t.parent || "") === "personas mencionadas";
+        });
+        if (!people.length) return;
+        lines.push(r.file.name + ":");
+        people.forEach(function(p){ lines.push("  - " + p.title); });
+        lines.push("");
+      });
+      var text = lines.join("\n").trim();
+      if (!text){
+        text = "No se encontraron personas mencionadas en el índice de los archivos seleccionados.";
+        if (notIndexed.length) text += "\n\nSin índice generado (no se pudieron revisar): " + notIndexed.join(", ") + ".";
+      } else if (notIndexed.length){
+        text += "\n\n(Sin índice generado, no revisados: " + notIndexed.join(", ") + ".)";
+      }
+      openReader("Personas mencionadas", chosen.map(function(f){ return f.name; }).join(" · "), text);
+    }).finally(function(){
+      if (btn){ btn.disabled = false; btn.textContent = "Ver personas mencionadas 👤"; }
+    });
+  }
+
   function generateQuestions(chosen, topic, targetEl, count, type, difficulty, includeAnswers){
     var target=targetEl || els.preview;
     if(!chosen || !chosen.length) return;
@@ -1092,6 +1127,7 @@
         '<input type="text" id="multiQuestionInput" placeholder="Preguntá algo puntual sobre los archivos seleccionados 💬">' +
         '<button type="button" class="ghost" id="multiAskBtn">Preguntar ❓</button>' +
       '</div>' +
+      '<button type="button" class="ghost small" id="multiViewPeopleBtn" style="flex-basis:100%;">Ver personas mencionadas 👤</button>' +
       '<div id="multiExamControls" class="exam-controls" style="display:none;flex-basis:100%;">' +
         '<div><label for="multiExamCount">Cantidad</label><select id="multiExamCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
         '<div><label for="multiExamType">Tipo</label><select id="multiExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
@@ -1121,6 +1157,11 @@
         var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
         askQuestion(chosen, this.value, els.preview);
       }
+    });
+
+    document.getElementById("multiViewPeopleBtn").addEventListener("click", function(){
+      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
+      viewPeopleAcrossFiles(chosen);
     });
 
     function getAiTopic(){

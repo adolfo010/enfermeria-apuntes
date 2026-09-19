@@ -788,12 +788,14 @@ REGLAS ESTRICTAS:
         : `Prepará el contenido del material adjunto para ser resumido posteriormente. Conservá la información académicamente relevante del archivo y no agregues conocimiento externo.`;
 
       const fileIds: string[] = [];
+      const tempCopyIds: string[] = [];
       try {
         const extracted: { fileName: string; text: string }[] = [];
         const filesWithoutIndex: string[] = [];
 
         for (const f of filesInput) {
           const content = await getSummarizableContent(f.fileId, f.mimeType, accessToken);
+          if (content.tempCopyId) tempCopyIds.push(content.tempCopyId);
           if (content.bytes.length > MAX_SUMMARIZE_BYTES) {
             throw new Error(`TOO_LARGE: el archivo ${f.fileName || "seleccionado"} supera el límite de 64 MB para procesamiento con IA.`);
           }
@@ -979,6 +981,9 @@ ${requestedStyle}`;
             });
           } catch (_e) {}
         }
+        for (const id of tempCopyIds) {
+          try { await driveFetch(`files/${id}`, accessToken, { method: "DELETE" }); } catch (_e) {}
+        }
       }
     }
 
@@ -1075,10 +1080,12 @@ ${answers ? "Incluí respuesta correcta y una explicación breve basada en el ma
 
       const fileIds: string[] = [];
       const fileLabels: string[] = [];
+      const tempCopyIds: string[] = [];
       const filesWithoutIndex: string[] = [];
       try {
         for (const f of filesInput) {
           const content = await getSummarizableContent(f.fileId, f.mimeType, accessToken);
+          if (content.tempCopyId) tempCopyIds.push(content.tempCopyId);
           if (content.bytes.length > MAX_SUMMARIZE_BYTES) throw new Error("TOO_LARGE");
           const allChunks = content.mime === "application/pdf" ? await splitPdfIntoChunks(content.bytes, 3) : [content.bytes];
           let selectedIndexes: number[] | null = null;
@@ -1558,6 +1565,9 @@ Devolvé ÚNICAMENTE un JSON válido con esta estructura:
         for (const id of fileIds) {
           try { await fetch(`https://api.openai.com/v1/files/${id}`,{method:"DELETE",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`}}); } catch(_e){}
         }
+        for (const id of tempCopyIds) {
+          try { await driveFetch(`files/${id}`, accessToken, { method: "DELETE" }); } catch (_e) {}
+        }
       }
     }
 
@@ -1651,8 +1661,10 @@ Devolvé ÚNICAMENTE JSON con el índice numérico del tema más relevante para 
       // Paso 2: subimos ÚNICAMENTE los bloques del tema elegido (y sus
       // descendientes) y respondemos la pregunta usando solo ese contenido.
       const fileIds: string[] = [];
+      let tempCopyId: string | null = null;
       try {
         const content = await getSummarizableContent(f.fileId, f.mimeType, accessToken);
+        tempCopyId = content.tempCopyId;
         if (content.bytes.length > MAX_SUMMARIZE_BYTES) {
           throw new Error(`TOO_LARGE: el archivo ${f.fileName || "seleccionado"} supera el límite de 64 MB para procesamiento con IA.`);
         }
@@ -1713,6 +1725,9 @@ REGLAS:
       } finally {
         for (const id of fileIds) {
           try { await fetch(`https://api.openai.com/v1/files/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }); } catch (_e) {}
+        }
+        if (tempCopyId) {
+          try { await driveFetch(`files/${tempCopyId}`, accessToken, { method: "DELETE" }); } catch (_e) {}
         }
       }
     }
