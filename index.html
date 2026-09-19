@@ -778,8 +778,14 @@
       '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
       '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
     '</div>' +
+    '<div class="preview-path" style="margin-top:14px;">Preguntá algo puntual 💬</div>' +
+    '<div class="summarize-row">' +
+      '<input type="text" id="askQuestionInput" placeholder="Ej: ¿Cuáles son las partes de la neurona?">' +
+      '<button type="button" class="ghost" id="askQuestionBtn">Preguntar ❓</button>' +
+    '</div>' +
     '<div id="summaryResult"></div>' +
-    '<div id="examResult"></div>';
+    '<div id="examResult"></div>' +
+    '<div id="askResult"></div>';
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
@@ -851,6 +857,68 @@
         Number(document.getElementById("examDifficulty").value),
         document.getElementById("examAnswers").checked);
     });
+
+    document.getElementById("askQuestionBtn").addEventListener("click", function(){
+      askQuestion([file], document.getElementById("askQuestionInput").value, document.getElementById("askResult"));
+    });
+    document.getElementById("askQuestionInput").addEventListener("keydown", function(e){
+      if (e.key === "Enter"){ e.preventDefault(); askQuestion([file], this.value, document.getElementById("askResult")); }
+    });
+  }
+
+  function askQuestion(chosen, question, targetEl){
+    var target = targetEl || els.preview;
+    if (!chosen || !chosen.length) return;
+    var cleanQuestion = (question || "").trim();
+    if (!cleanQuestion){ alert("Escribí una pregunta."); return; }
+    var btn = document.getElementById("askQuestionBtn") || document.getElementById("multiAskBtn");
+    if (btn){ btn.disabled = true; btn.textContent = "Buscando la respuesta…"; }
+    target.innerHTML =
+      '<div class="preview-title">Pregunta y respuesta</div>' +
+      '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
+      '<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Buscando la respuesta en el material…</div>';
+    var files = chosen.map(function(f){
+      return { fileId:f.id, mimeType:f.mimeType || "application/octet-stream", fileName:f.name };
+    });
+    callDrive({ action:"askQuestion", files:files, question:cleanQuestion })
+      .then(function(payload){
+        var answer = payload && payload.answer ? payload.answer : "";
+        if (!answer) throw new Error("La IA no devolvió una respuesta.");
+        var matchedInfo = payload.matchedTopic
+          ? '<div class="banner info" style="margin-top:10px;">Tema encontrado: <strong>' + escapeHtml(payload.matchedTopic) + '</strong>' + (payload.matchedFile ? ' — ' + escapeHtml(payload.matchedFile) : '') + '</div>'
+          : '';
+        target.innerHTML =
+          '<div class="preview-title">Pregunta y respuesta</div>' +
+          '<div class="preview-path">' + escapeHtml(chosen.map(function(f){ return f.name; }).join(" · ")) + '</div>' +
+          '<div class="banner info" style="margin-top:10px;">Pregunta: <strong>' + escapeHtml(cleanQuestion) + '</strong></div>' +
+          matchedInfo +
+          '<div id="answerText" class="summary-scroll" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">' + escapeHtml(answer) + '</div>' +
+          '<div class="summarize-row" style="margin-top:14px;flex-wrap:wrap;">' +
+            '<button type="button" id="readAnswerBtn">Ver en pantalla completa ⛶</button>' +
+            '<button type="button" class="ghost" id="copyAnswerBtn">Copiar respuesta 📋</button>' +
+          '</div>' +
+          '<div id="copyAnswerMsg" style="margin-top:6px;font-size:13px;"></div>';
+        target.querySelector("#readAnswerBtn").addEventListener("click", function(){
+          openReader("Pregunta y respuesta", chosen.map(function(f){ return f.name; }).join(" · "), "Pregunta: " + cleanQuestion + "\n\n" + answer);
+        });
+        target.querySelector("#copyAnswerBtn").addEventListener("click", function(){
+          copyToClipboard(answer).then(function(ok){
+            target.querySelector("#copyAnswerMsg").textContent = ok ? "Respuesta copiada ✓" : "No se pudo copiar automáticamente.";
+          });
+        });
+      })
+      .catch(function(err){
+        var msg = String(err.message || "error");
+        var isNoIndex = msg.indexOf("NO_INDEX:") === 0;
+        target.innerHTML =
+          '<div class="preview-title">Pregunta y respuesta</div>' +
+          (isNoIndex
+            ? '<div class="banner warn" style="margin-top:10px;">⚠️ ' + escapeHtml(msg.replace(/^NO_INDEX:\s*/, "")) + '</div>'
+            : '<div class="banner danger" style="margin-top:10px;">No se pudo responder (' + escapeHtml(msg) + ').</div>');
+      })
+      .finally(function(){
+        if (btn){ btn.disabled = false; btn.textContent = "Preguntar ❓"; }
+      });
   }
 
   function generateQuestions(chosen, topic, targetEl, count, type, difficulty, includeAnswers){
@@ -984,6 +1052,10 @@
       '<button type="button" id="multiSummarizeBtn">Generar resumen con IA ✨</button>' +
       '<button type="button" id="multiExamBtn">Preguntas de examen 📝</button>' +
       '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>' +
+      '<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<input type="text" id="multiQuestionInput" placeholder="Preguntá algo puntual sobre los archivos seleccionados 💬">' +
+        '<button type="button" class="ghost" id="multiAskBtn">Preguntar ❓</button>' +
+      '</div>' +
       '<div id="multiExamControls" class="exam-controls" style="display:none;flex-basis:100%;">' +
         '<div><label for="multiExamCount">Cantidad</label><select id="multiExamCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
         '<div><label for="multiExamType">Tipo</label><select id="multiExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
@@ -1001,6 +1073,18 @@
     document.getElementById("multiClearBtn").addEventListener("click", function(){
       selectedIds = {};
       renderResults(lastSearchResults);
+    });
+
+    document.getElementById("multiAskBtn").addEventListener("click", function(){
+      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
+      askQuestion(chosen, document.getElementById("multiQuestionInput").value, els.preview);
+    });
+    document.getElementById("multiQuestionInput").addEventListener("keydown", function(e){
+      if (e.key === "Enter"){
+        e.preventDefault();
+        var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
+        askQuestion(chosen, this.value, els.preview);
+      }
     });
 
     function getAiTopic(){

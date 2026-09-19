@@ -509,8 +509,39 @@ function mergeIndexTopics(ex:any[],inc:any[],ps:number,pe:number):any[]{
 async function getDriveMetaForIndex(fileId:string,token:string):Promise<any>{return await driveFetch(`files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,modifiedTime,md5Checksum,webViewLink`,token);}
 function indexFingerprint(meta:any):string{return meta?.md5Checksum?`md5:${meta.md5Checksum}`:`meta:${meta?.modifiedTime||""}|${meta?.size||""}`;}
 function isDocumentRootTopic(topic:string,fileName:string):boolean{const nt=normalizeForTopic(topic),base=String(fileName||"").replace(/\.[^.]+$/,"");const nf=normalizeForTopic(base);return !!nt&&!!nf&&nt===nf;}
-async function getCurrentIndex(uid:string,fid:string,fp:string):Promise<any|null>{const r=await rest(`ai_document_indexes?select=id,user_id,drive_file_id,file_name,file_fingerprint,page_count,topics,model,created_at,updated_at&user_id=eq.${encodeURIComponent(uid)}&drive_file_id=eq.${encodeURIComponent(fid)}&file_fingerprint=eq.${encodeURIComponent(fp)}&limit=1`);if(!r.ok)return null;return (await r.json())?.[0]||null;}
-async function getLatestIndexJob(uid:string,fid:string):Promise<any|null>{const r=await rest(`ai_index_jobs?select=id,user_id,drive_file_id,file_name,mime_type,file_fingerprint,status,total_pages,chunk_pages,total_chunks,next_chunk,processed_pages,topics,error_message,model,created_at,updated_at,completed_at&user_id=eq.${encodeURIComponent(uid)}&drive_file_id=eq.${encodeURIComponent(fid)}&order=updated_at.desc&limit=1`);if(!r.ok)return null;return (await r.json())?.[0]||null;}
+// Dado un tema exacto del índice, devuelve los índices de chunk (bloques de 3
+// páginas) que le corresponden a él y a todos sus descendientes en el árbol.
+// Usado para acotar qué partes de un PDF indexado hace falta subirle a la IA.
+function selectChunkIndexesForTopic(topics:any[],topicTitle:string,totalChunks:number):number[]{
+  const nt=normalizeForTopic(topicTitle);
+  if(!nt) return [];
+  const selected=new Set<string>([nt]);
+  let changed=true;
+  while(changed){
+    changed=false;
+    for(const t of topics){
+      const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");
+      if(parent&&selected.has(parent)&&!selected.has(title)){selected.add(title);changed=true;}
+    }
+  }
+  const set=new Set<number>();
+  for(const t of topics){
+    const title=normalizeForTopic(t.title||""),parent=normalizeForTopic(t.parent||"");
+    if(selected.has(title)||selected.has(parent)){
+      const a=Math.max(0,Number(t.chunk_start||0)),b=Math.min(totalChunks-1,Number(t.chunk_end??a));
+      for(let c=a;c<=b;c++) set.add(c);
+    }
+  }
+  return Array.from(set).sort((a,b)=>a-b);
+}
+// El índice temático es del ARCHIVO, no del usuario que lo generó: los apuntes
+// son material institucional compartido entre las cuentas admin, así que una
+// vez que alguien indexa un archivo queda disponible para cualquier admin sin
+// tener que volver a gastar presupuesto de IA reindexándolo. Por eso estas dos
+// consultas ya no filtran por user_id (se sigue guardando quién lo generó,
+// solo que no se usa para restringir la búsqueda).
+async function getCurrentIndex(uid:string,fid:string,fp:string):Promise<any|null>{const r=await rest(`ai_document_indexes?select=id,user_id,drive_file_id,file_name,file_fingerprint,page_count,topics,model,created_at,updated_at&drive_file_id=eq.${encodeURIComponent(fid)}&file_fingerprint=eq.${encodeURIComponent(fp)}&order=updated_at.desc&limit=1`);if(!r.ok)return null;return (await r.json())?.[0]||null;}
+async function getLatestIndexJob(uid:string,fid:string):Promise<any|null>{const r=await rest(`ai_index_jobs?select=id,user_id,drive_file_id,file_name,mime_type,file_fingerprint,status,total_pages,chunk_pages,total_chunks,next_chunk,processed_pages,topics,error_message,model,created_at,updated_at,completed_at&drive_file_id=eq.${encodeURIComponent(fid)}&order=updated_at.desc&limit=1`);if(!r.ok)return null;return (await r.json())?.[0]||null;}
 async function runIndexJob(jobId:number,user:{id:string;email?:string;role:string},token:string,initial?:{bytes:Uint8Array;mime:string;tempCopyId:string|null}|null):Promise<void>{
  let tempCopyId:string|null=initial?.tempCopyId||null;
  try{
@@ -580,8 +611,8 @@ Deno.serve(async (req: Request) => {
 
     if(action==="indexStatus"){const fileId=String(body.fileId||"").trim();if(!fileId)return cors(new Response(JSON.stringify({error:"Falta fileId"}),{status:400}));const meta=await getDriveMetaForIndex(fileId,accessToken),fp=indexFingerprint(meta);return cors(new Response(JSON.stringify({ok:true,fingerprint:fp,index:await getCurrentIndex(user.id,fileId,fp),job:await getLatestIndexJob(user.id,fileId)}),{headers:{"Content-Type":"application/json"}}));}
     if(action==="indexStart"){if(!OPENAI_API_KEY)throw new Error("OPENAI_NOT_CONFIGURED");const fileId=String(body.fileId||"").trim();if(!fileId)return cors(new Response(JSON.stringify({error:"Falta fileId"}),{status:400}));const meta=await getDriveMetaForIndex(fileId,accessToken),fp=indexFingerprint(meta),existing=await getCurrentIndex(user.id,fileId,fp);if(existing)return cors(new Response(JSON.stringify({ok:true,reused:true,index:existing,job:null}),{headers:{"Content-Type":"application/json"}}));const latest=await getLatestIndexJob(user.id,fileId);if(latest&&["pending","running","paused"].includes(latest.status)&&latest.file_fingerprint===fp)return cors(new Response(JSON.stringify({ok:true,resumed:true,index:null,job:latest}),{headers:{"Content-Type":"application/json"}}));const content=await getSummarizableContent(fileId,meta.mimeType,accessToken);if(content.bytes.length>MAX_SUMMARIZE_BYTES)throw new Error("TOO_LARGE");const pdf=content.mime==="application/pdf"?await PDFDocument.load(content.bytes,{ignoreEncryption:true}):null;const pages=pdf?pdf.getPageCount():1,total=content.mime==="application/pdf"?Math.ceil(pages/3):1;const ir=await rest("ai_index_jobs",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({user_id:user.id,drive_file_id:fileId,file_name:meta.name||"apunte",mime_type:meta.mimeType||"application/pdf",file_fingerprint:fp,status:"running",total_pages:pages,chunk_pages:3,total_chunks:total,next_chunk:0,processed_pages:0,topics:[],model:OPENAI_MODEL})});if(!ir.ok)throw new Error("No se pudo crear el trabajo de indexación: "+await ir.text());const job=(await ir.json())?.[0];if(!job)throw new Error("No se pudo crear el trabajo de indexación");EdgeRuntime.waitUntil(runIndexJob(job.id,user,accessToken,content));return cors(new Response(JSON.stringify({ok:true,index:null,job}),{headers:{"Content-Type":"application/json"}}));}
-    if(action==="indexRun"){const jobId=Number(body.jobId);if(!jobId)return cors(new Response(JSON.stringify({error:"Falta jobId"}),{status:400}));const jr=await rest(`ai_index_jobs?select=*&id=eq.${jobId}&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);if(!jr.ok)throw new Error("No se pudo consultar el trabajo de indexación");const job=(await jr.json())?.[0];if(!job)throw new Error("INDEX_JOB_NOT_FOUND");if(["completed","cancelled","paused","running"].includes(job.status))return cors(new Response(JSON.stringify({ok:true,job,alreadyRunning:job.status==="running"}),{headers:{"Content-Type":"application/json"}}));await rest(`ai_index_jobs?id=eq.${jobId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:"running",error_message:null,updated_at:new Date().toISOString()})});EdgeRuntime.waitUntil(runIndexJob(jobId,user,accessToken));return cors(new Response(JSON.stringify({ok:true,started:true,job}),{headers:{"Content-Type":"application/json"}}));}
-    if(action==="indexControl"){const jobId=Number(body.jobId),control=String(body.control||"");if(!jobId||!["pause","resume","cancel"].includes(control))return cors(new Response(JSON.stringify({error:"Datos de control inválidos"}),{status:400}));const jr=await rest(`ai_index_jobs?select=*&id=eq.${jobId}&user_id=eq.${encodeURIComponent(user.id)}&limit=1`);if(!jr.ok)throw new Error("No se pudo consultar el trabajo de indexación");const job=(await jr.json())?.[0];if(!job)throw new Error("INDEX_JOB_NOT_FOUND");const st=control==="pause"?"paused":control==="cancel"?"cancelled":"pending";await rest(`ai_index_jobs?id=eq.${jobId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:st,error_message:control==="cancel"?"Cancelado por el usuario.":null,updated_at:new Date().toISOString()})});if(control==="resume")EdgeRuntime.waitUntil(runIndexJob(jobId,user,accessToken));return cors(new Response(JSON.stringify({ok:true,status:st}),{headers:{"Content-Type":"application/json"}}));}
+    if(action==="indexRun"){const jobId=Number(body.jobId);if(!jobId)return cors(new Response(JSON.stringify({error:"Falta jobId"}),{status:400}));const jr=await rest(`ai_index_jobs?select=*&id=eq.${jobId}&limit=1`);if(!jr.ok)throw new Error("No se pudo consultar el trabajo de indexación");const job=(await jr.json())?.[0];if(!job)throw new Error("INDEX_JOB_NOT_FOUND");if(["completed","cancelled","paused","running"].includes(job.status))return cors(new Response(JSON.stringify({ok:true,job,alreadyRunning:job.status==="running"}),{headers:{"Content-Type":"application/json"}}));await rest(`ai_index_jobs?id=eq.${jobId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:"running",error_message:null,updated_at:new Date().toISOString()})});EdgeRuntime.waitUntil(runIndexJob(jobId,user,accessToken));return cors(new Response(JSON.stringify({ok:true,started:true,job}),{headers:{"Content-Type":"application/json"}}));}
+    if(action==="indexControl"){const jobId=Number(body.jobId),control=String(body.control||"");if(!jobId||!["pause","resume","cancel"].includes(control))return cors(new Response(JSON.stringify({error:"Datos de control inválidos"}),{status:400}));const jr=await rest(`ai_index_jobs?select=*&id=eq.${jobId}&limit=1`);if(!jr.ok)throw new Error("No se pudo consultar el trabajo de indexación");const job=(await jr.json())?.[0];if(!job)throw new Error("INDEX_JOB_NOT_FOUND");const st=control==="pause"?"paused":control==="cancel"?"cancelled":"pending";await rest(`ai_index_jobs?id=eq.${jobId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:st,error_message:control==="cancel"?"Cancelado por el usuario.":null,updated_at:new Date().toISOString()})});if(control==="resume")EdgeRuntime.waitUntil(runIndexJob(jobId,user,accessToken));return cors(new Response(JSON.stringify({ok:true,status:st}),{headers:{"Content-Type":"application/json"}}));}
 
     if (action === "aiUsage") {
       requireAdmin(user);
@@ -1522,6 +1553,161 @@ Devolvé ÚNICAMENTE un JSON válido con esta estructura:
       } finally {
         for (const id of fileIds) {
           try { await fetch(`https://api.openai.com/v1/files/${id}`,{method:"DELETE",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`}}); } catch(_e){}
+        }
+      }
+    }
+
+    if (action === "askQuestion") {
+      const { fileId, mimeType, question } = body;
+      const filesInput: { fileId: string; mimeType: string; fileName?: string }[] =
+        Array.isArray(body.files) && body.files.length ? body.files : (fileId && mimeType ? [{ fileId, mimeType }] : []);
+      if (!filesInput.length) return cors(new Response(JSON.stringify({ error: "Faltan datos" }), { status: 400 }));
+      const cleanQuestion = String(question || "").trim();
+      if (!cleanQuestion) return cors(new Response(JSON.stringify({ error: "Falta la pregunta" }), { status: 400 }));
+      if (!OPENAI_API_KEY) throw new Error("OPENAI_NOT_CONFIGURED");
+
+      // "Preguntá algo puntual" solo trabaja sobre archivos con índice temático ya
+      // generado: sin eso no hay forma de acotar qué parte del material leer, y
+      // subirle el documento entero a la IA para una sola pregunta puede agotar
+      // los recursos de la Edge Function en archivos grandes.
+      const missingIndex: string[] = [];
+      const fileIndexes: any[] = [];
+      for (const f of filesInput) {
+        const meta = await getDriveMetaForIndex(f.fileId, accessToken);
+        const fp = indexFingerprint(meta);
+        const idx = await getCurrentIndex(user.id, f.fileId, fp);
+        if (!idx || !Array.isArray(idx.topics) || !idx.topics.length) {
+          missingIndex.push(f.fileName || meta?.name || "apunte");
+          continue;
+        }
+        fileIndexes.push({ file: f, meta, idx });
+      }
+      if (missingIndex.length) {
+        return cors(new Response(JSON.stringify({
+          error: `NO_INDEX: "Preguntá algo puntual" solo funciona sobre archivos con índice generado. Generá primero el índice de: ${missingIndex.join(", ")} (botón "Índice 📑" → "Analizar y crear índice").`
+        }), { status: 400 }));
+      }
+
+      // Paso 1: con un llamado liviano de solo texto (sin subir archivos), le
+      // pedimos a la IA que identifique cuál de los temas ya indexados es el
+      // más relevante para responder la pregunta.
+      const combinedTopics: { fileLabel: string; title: string; parent: string; fi: number }[] = [];
+      fileIndexes.forEach((entry: any, fi: number) => {
+        for (const t of entry.idx.topics) {
+          combinedTopics.push({ fileLabel: entry.file.fileName || entry.meta?.name || "apunte", title: String(t.title || ""), parent: String(t.parent || ""), fi });
+        }
+      });
+
+      const classifyPrompt = `Tenés el índice temático de uno o más apuntes de Licenciatura en Enfermería. Elegí el tema MÁS relevante para responder la siguiente pregunta de una estudiante.
+
+Pregunta: "${cleanQuestion}"
+
+TEMAS DISPONIBLES:
+${combinedTopics.map((t, i) => `${i}. [${t.fileLabel}] "${t.title}"${t.parent ? ` (dentro de: "${t.parent}")` : ""}`).join("\n")}
+
+Devolvé ÚNICAMENTE JSON con el índice numérico del tema más relevante para responder la pregunta, o -1 si ningún tema de la lista permite responder la pregunta.`;
+
+      await assertAiBudget();
+      const classifyRes = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          input: [{ role: "user", content: [{ type: "input_text", text: classifyPrompt }] }],
+          max_output_tokens: 200,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "topic_pick",
+              description: "Índice del tema más relevante para responder la pregunta.",
+              strict: true,
+              schema: { type: "object", properties: { index: { type: "integer" } }, required: ["index"], additionalProperties: false }
+            }
+          }
+        }),
+      }, OPENAI_TIMEOUT_MS);
+      const classifyJson = await classifyRes.json();
+      await recordOpenAIUsage(classifyJson, { user, action: "askQuestion", stage: "classify", topic: cleanQuestion, files: filesInput });
+      if (!classifyRes.ok) throw new Error(classifyJson?.error?.message || "Error al identificar el tema de la pregunta");
+      const classifyRaw = (classifyJson.output || []).flatMap((o: any) => o.content || []).map((p: any) => p.text || "").join("").trim();
+      let pickedIndex = -1;
+      try { pickedIndex = Number(JSON.parse(classifyRaw)?.index); } catch (_e) {}
+
+      if (!Number.isInteger(pickedIndex) || pickedIndex < 0 || pickedIndex >= combinedTopics.length) {
+        return cors(new Response(JSON.stringify({
+          ok: true,
+          answer: "El material indexado seleccionado no parece contener información específica sobre esta pregunta. Probá reformularla o seleccioná otro apunte."
+        }), { headers: { "Content-Type": "application/json" } }));
+      }
+
+      const picked = combinedTopics[pickedIndex];
+      const entry = fileIndexes[picked.fi];
+      const f = entry.file;
+
+      // Paso 2: subimos ÚNICAMENTE los bloques del tema elegido (y sus
+      // descendientes) y respondemos la pregunta usando solo ese contenido.
+      const fileIds: string[] = [];
+      try {
+        const content = await getSummarizableContent(f.fileId, f.mimeType, accessToken);
+        if (content.bytes.length > MAX_SUMMARIZE_BYTES) {
+          throw new Error(`TOO_LARGE: el archivo ${f.fileName || "seleccionado"} supera el límite de 64 MB para procesamiento con IA.`);
+        }
+        const allChunks = content.mime === "application/pdf" ? await splitPdfIntoChunks(content.bytes, 3) : [content.bytes];
+        const selectedIndexes = selectChunkIndexesForTopic(entry.idx.topics, picked.title, allChunks.length);
+        const indexes = selectedIndexes.length ? selectedIndexes : allChunks.map((_: any, i: number) => i);
+
+        const contentParts: any[] = [];
+        for (const chunkIndex of indexes) {
+          const chunkBytes = allChunks[chunkIndex];
+          const label = allChunks.length > 1
+            ? `${(f.fileName || "apunte").replace(/\.pdf$/i, "")} — parte ${chunkIndex + 1} de ${allChunks.length}.pdf`
+            : (f.fileName || "apunte");
+          const form = new FormData();
+          form.append("purpose", "user_data");
+          form.append("file", new Blob([chunkBytes], { type: content.mime }), label);
+          const fr = await fetchWithTimeout("https://api.openai.com/v1/files", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+            body: form,
+          }, OPENAI_TIMEOUT_MS);
+          const fj = await fr.json();
+          if (!fr.ok) throw new Error(fj?.error?.message || "No se pudo enviar el archivo a OpenAI");
+          fileIds.push(fj.id);
+          contentParts.push({ type: "input_text", text: `Archivo: ${label}` });
+          contentParts.push({ type: "input_file", file_id: fj.id });
+        }
+
+        const prompt = `Respondé la siguiente pregunta de una estudiante de Licenciatura en Enfermería usando EXCLUSIVAMENTE la información de los archivos adjuntos (corresponden al tema "${picked.title}" de "${picked.fileLabel}").
+
+Pregunta: "${cleanQuestion}"
+
+REGLAS:
+- Basate únicamente en el contenido de los archivos adjuntos. No completes con conocimiento externo ni inventes datos.
+- Si el material no contiene información suficiente para responder, decilo claramente en vez de inventar una respuesta.
+- Respondé en español, de forma clara y directa, con el desarrollo necesario para que se entienda bien.`;
+
+        contentParts.push({ type: "input_text", text: prompt });
+
+        await assertAiBudget();
+        const rr = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: OPENAI_MODEL,
+            input: [{ role: "user", content: contentParts }],
+            max_output_tokens: 4000
+          }),
+        }, OPENAI_TIMEOUT_MS);
+        const rj = await rr.json();
+        await recordOpenAIUsage(rj, { user, action: "askQuestion", stage: "answer", topic: cleanQuestion, files: [f] });
+        if (!rr.ok) throw new Error(rj?.error?.message || "Error al responder la pregunta con OpenAI");
+        const answer = (rj.output || []).flatMap((o: any) => o.content || []).map((p: any) => p.text || "").join("\n").trim();
+        if (!answer) throw new Error("OpenAI no devolvió una respuesta.");
+
+        return cors(new Response(JSON.stringify({ ok: true, answer, matchedTopic: picked.title, matchedFile: picked.fileLabel }), { headers: { "Content-Type": "application/json" } }));
+      } finally {
+        for (const id of fileIds) {
+          try { await fetch(`https://api.openai.com/v1/files/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }); } catch (_e) {}
         }
       }
     }
