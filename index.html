@@ -63,6 +63,7 @@
   button:disabled{opacity:.5;cursor:default;}
   button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
   button.small{padding:7px 10px;font-size:14px;border-radius:8px;}
+  button.small.active-sort{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
   .inbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;}
   .inbox-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;cursor:pointer;user-select:none;}
   .inbox-head .title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;}
@@ -97,7 +98,7 @@
   #selectionSummary .count{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);white-space:nowrap;}
 
   .app-layout{display:flex;align-items:flex-start;gap:0;}
-  .app-nav{width:210px;flex:0 0 210px;background:#231C21;color:#E7DEE3;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:20px;}
+  .app-nav{width:210px;flex:0 0 210px;background:#6B3A50;color:#F3E4EC;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:20px;}
   .nav-brand{padding:16px 16px 12px;border-bottom:1px solid rgba(255,255,255,.08);}
   .nav-brand-title{font-weight:600;font-size:15px;color:#fff;}
   .nav-brand-sub{font-size:11px;color:#B7A6AF;margin-top:2px;}
@@ -382,6 +383,7 @@
 
         <div class="panel">
           <h2>Resultados</h2>
+          <div id="resultsSortBar" style="display:flex;gap:6px;padding:0 10px 8px;"></div>
           <div id="selectionSummary"></div>
           <div class="results" id="results">
             <div class="empty-state"><div class="big">＿</div>Escribí algo arriba para buscar en el Drive.</div>
@@ -1135,6 +1137,34 @@
   var preguntasPickedIds = {};
   var indexStatusCache = {};
 
+  var resultsSortMode = "date";
+
+  function sortFilesBy(files, mode){
+    var arr = (files||[]).slice();
+    if (mode === "name"){
+      arr.sort(function(a,b){ return (a.name||"").localeCompare(b.name||"", "es", {sensitivity:"base"}); });
+    } else {
+      arr.sort(function(a,b){ return new Date(b.modifiedTime||0) - new Date(a.modifiedTime||0); });
+    }
+    return arr;
+  }
+
+  function renderResultsSortBar(){
+    var wrap = document.getElementById("resultsSortBar");
+    if (!wrap) return;
+    if (!lastSearchResults || !lastSearchResults.length){ wrap.innerHTML = ""; return; }
+    wrap.innerHTML =
+      '<button type="button" class="ghost small' + (resultsSortMode==="date"?" active-sort":"") + '" data-sort="date">📅 Más reciente</button>' +
+      '<button type="button" class="ghost small' + (resultsSortMode==="name"?" active-sort":"") + '" data-sort="name">🔤 Nombre</button>';
+    Array.prototype.forEach.call(wrap.querySelectorAll("[data-sort]"), function(btn){
+      btn.addEventListener("click", function(){
+        resultsSortMode = btn.getAttribute("data-sort");
+        lastSearchResults = sortFilesBy(lastSearchResults, resultsSortMode);
+        renderResults(lastSearchResults);
+      });
+    });
+  }
+
   function getSelectedFiles(){
     return (lastSearchResults||[]).filter(function(f){ return selectedIds[f.id]; });
   }
@@ -1535,6 +1565,7 @@
   function renderResults(files){
     if (!files || !files.length){
       els.results.innerHTML = '<div class="empty-state"><div class="big">∅</div>Sin resultados. Probá con otro término.</div>';
+      renderResultsSortBar();
       updateNavAvailability();
       renderSelectionBanners(); renderSelectionSummary();
       return;
@@ -1558,6 +1589,7 @@
       '</div>';
     });
     els.results.innerHTML = html;
+    renderResultsSortBar();
     var byId = {}; files.forEach(function(f){ byId[f.id] = f; });
     updateNavAvailability();
     renderSelectionBanners(); renderSelectionSummary();
@@ -1670,7 +1702,7 @@
     renderSelectionSummary();
     els.results.innerHTML = '<div class="empty-state"><span class="spin"></span>&nbsp; Buscando…</div>';
     callDrive({ action: "search", term: term })
-      .then(function(payload){ lastSearchResults = payload.files || []; renderResults(lastSearchResults); })
+      .then(function(payload){ lastSearchResults = sortFilesBy(payload.files || [], resultsSortMode); renderResults(lastSearchResults); })
       .catch(function(err){
         els.results.innerHTML = '<div class="banner danger">No se pudo buscar (' + escapeHtml(err.message) + ').</div>';
       });

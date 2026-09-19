@@ -698,8 +698,8 @@ Deno.serve(async (req: Request) => {
     if (action === "search") {
       const term = String(body.term || "").replace(/'/g, "\\'");
       if (!term) return cors(new Response(JSON.stringify({ files: [] }), { headers: { "Content-Type": "application/json" } }));
-      const q = `(name contains '${term}' or fullText contains '${term}') and mimeType != 'application/vnd.google-apps.folder' and trashed = false`;
-      const params = new URLSearchParams({ q, pageSize: "25", orderBy: "modifiedTime desc", fields: "files(id,name,mimeType,size,webViewLink,md5Checksum,modifiedTime)" });
+      const q = `(name contains '${term}' or fullText contains '${term}') and mimeType != 'application/vnd.google-apps.folder' and not name contains 'Bitácora' and trashed = false`;
+      const params = new URLSearchParams({ q, pageSize: "25", fields: "files(id,name,mimeType,size,webViewLink,md5Checksum,modifiedTime)" });
       const data = await driveFetch(`files?${params.toString()}`, accessToken);
       return cors(new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } }));
     }
