@@ -574,6 +574,10 @@ ${continuityBlock}REGLAS IMPORTANTES:
 - No repitas el mismo tema dentro del fragmento.
 - Si el fragmento contiene solamente menciones, etiquetas, portada, índice o material sin desarrollo académico identificable, devolvé topics=[].
 - Un bloque vacío NO es un error: puede corresponder a portada, índice, separadores o páginas sin contenido académico.
+PERSONAS MENCIONADAS: además de los temas académicos, indexá también a las personas sobre las que el material desarrolla contenido real: qué dijo, qué hizo, su teoría o su aporte, o un caso clínico descripto sobre esa persona.
+- Solo indexá una persona si el fragmento explica algo concreto sobre ella. No alcanza con que su nombre aparezca una vez sin desarrollo.
+- NO indexes como persona a quien solo figura como autor/firma del material (ej: "Lic. Juan Pérez" al pie de una diapositiva) si el contenido no desarrolla nada sobre ella.
+- Para una persona, usá "title": su nombre tal como figura en el material, y "parent": "Personas mencionadas".
 Devolvé exclusivamente el objeto JSON solicitado.`;
     const makeIndexResponse=async(promptText:string,maxTokens:number)=>await fetchWithTimeout("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:OPENAI_MODEL,input:[{role:"user",content:[{type:"input_text",text:"Archivo: "+name},{type:"input_file",file_id:fj.id},{type:"input_text",text:promptText}]}],text:{format:{type:"json_schema",name:"topic_index",description:"Índice temático extraído exclusivamente del PDF adjunto.",strict:true,schema:{type:"object",properties:{topics:{type:"array",items:{type:"object",properties:{title:{type:"string"},parent:{type:"string"}},required:["title","parent"],additionalProperties:false}}},required:["topics"],additionalProperties:false}}},max_output_tokens:maxTokens})},OPENAI_TIMEOUT_MS);
     const rr=await makeIndexResponse(prompt,1800);
@@ -1682,8 +1686,9 @@ Devolvé ÚNICAMENTE JSON con el índice numérico del tema más relevante para 
 Pregunta: "${cleanQuestion}"
 
 REGLAS:
+- El/los archivo(s) adjuntos SÍ contienen texto legible sobre este tema (ya fueron seleccionados específicamente porque el índice del documento indica que lo desarrollan) — no asumas que están vacíos o ilegibles sin haberlos revisado con atención.
 - Basate únicamente en el contenido de los archivos adjuntos. No completes con conocimiento externo ni inventes datos.
-- Si el material no contiene información suficiente para responder, decilo claramente en vez de inventar una respuesta.
+- Si, tras revisar el contenido adjunto, el material no alcanza para responder del todo, respondé con lo que SÍ esté disponible y aclará qué parte no se puede responder con este material, en vez de rechazar la pregunta por completo.
 - Respondé en español, de forma clara y directa, con el desarrollo necesario para que se entienda bien.`;
 
         contentParts.push({ type: "input_text", text: prompt });
