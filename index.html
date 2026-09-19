@@ -107,19 +107,20 @@
   .nav-item:hover:not(:disabled){background:rgba(255,255,255,.08);}
   .nav-item.active{background:var(--accent);color:#fff;}
   .nav-item:disabled{opacity:.35;cursor:not-allowed;}
-  .nav-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);margin-top:auto;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
-  .nav-footer .pill{white-space:normal;word-break:break-word;overflow-wrap:anywhere;font-size:11.5px;line-height:1.4;max-width:100%;}
-  .nav-footer button.ghost{color:#fff;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.06);}
-  .nav-footer button.ghost:hover{background:rgba(255,255,255,.16);}
   .app-main{flex:1;min-width:0;padding:0 0 0 20px;}
+  .app-topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;padding:0 0 14px;}
+  .app-topbar .pill{white-space:normal;word-break:break-word;overflow-wrap:anywhere;}
+  #systemMessages:empty{display:none;}
+  #systemMessages > *:empty{display:none;}
+  #systemMessages{margin-bottom:14px;display:flex;flex-direction:column;gap:8px;}
   @media (max-width:820px){
     .app-layout{flex-direction:column;}
     .app-nav{width:100%;flex:1 1 auto;position:static;border-radius:14px;}
     .nav-items{flex-direction:row;overflow-x:auto;}
     .nav-item{white-space:nowrap;}
     .nav-brand{display:none;}
-    .nav-footer{border-top:0;border-left:0;}
     .app-main{padding:16px 0 0;}
+    .app-topbar{justify-content:flex-start;}
   }
   .app-section .panel{padding:14px 16px;}
   .app-section .panel h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
@@ -356,10 +357,15 @@
         <button type="button" class="nav-item" data-section="examen" disabled>📝 Examen</button>
         <button type="button" class="nav-item" data-section="preguntas" disabled>💬 Preguntas</button>
       </div>
-      <div class="nav-footer" id="userBar"></div>
     </nav>
 
     <main class="app-main">
+      <header class="app-topbar" id="userBar"></header>
+      <div id="systemMessages">
+        <div id="connectArea"></div>
+        <div id="uploadStatus"></div>
+      </div>
+
       <section class="app-section" data-section-panel="buscar">
         <form class="searchbar" id="searchForm">
           <input id="searchInput" type="text" placeholder="Buscar por título, materia o contenido…" autocomplete="off" list="recentSearches">
@@ -368,9 +374,6 @@
           <button type="button" class="ghost" id="uploadBtn">Subir material ⬆</button>
           <input type="file" id="uploadInput" multiple style="display:none;">
         </form>
-        <div id="uploadStatus"></div>
-
-        <div id="connectArea"></div>
 
         <section class="inbox" id="inbox" style="display:none;">
           <div class="inbox-head" id="inboxHead">
