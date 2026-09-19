@@ -93,10 +93,38 @@
   .result:hover{background:var(--surface-2);}
   .result.active{background:var(--accent-soft);}
   .result .sel-check{flex:none;margin-top:2px;width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
-  #multiSelectBar{display:flex;gap:8px;align-items:center;padding:10px 10px 0;flex-wrap:wrap;}
-  #multiSelectBar .count{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);white-space:nowrap;}
-  #multiSelectBar input{flex:1;min-width:120px;font-family:var(--font-body);font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
-  #multiSelectBar input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  #selectionSummary{display:flex;gap:10px;align-items:center;padding:10px 10px 0;}
+  #selectionSummary .count{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);white-space:nowrap;}
+
+  .app-layout{display:flex;align-items:flex-start;gap:0;}
+  .app-nav{width:210px;flex:0 0 210px;background:#231C21;color:#E7DEE3;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:20px;}
+  .nav-brand{padding:16px 16px 12px;border-bottom:1px solid rgba(255,255,255,.08);}
+  .nav-brand-title{font-weight:600;font-size:15px;color:#fff;}
+  .nav-brand-sub{font-size:11px;color:#B7A6AF;margin-top:2px;}
+  .nav-items{padding:8px;display:flex;flex-direction:column;gap:2px;}
+  .nav-item{display:flex;align-items:center;gap:10px;background:none;border:0;color:#E7DEE3;text-align:left;padding:10px 12px;border-radius:9px;font-size:14px;font-weight:500;}
+  .nav-item:hover:not(:disabled){background:rgba(255,255,255,.08);}
+  .nav-item.active{background:var(--accent);color:#fff;}
+  .nav-item:disabled{opacity:.35;cursor:not-allowed;}
+  .nav-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);margin-top:auto;}
+  .app-main{flex:1;min-width:0;padding:0 0 0 20px;}
+  @media (max-width:820px){
+    .app-layout{flex-direction:column;}
+    .app-nav{width:100%;flex:1 1 auto;position:static;border-radius:14px;}
+    .nav-items{flex-direction:row;overflow-x:auto;}
+    .nav-item{white-space:nowrap;}
+    .nav-brand{display:none;}
+    .nav-footer{border-top:0;border-left:0;}
+    .app-main{padding:16px 0 0;}
+  }
+  .app-section .panel{padding:14px 16px;}
+  .app-section .panel h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+  .file-picker{display:flex;flex-direction:column;max-height:260px;overflow-y:auto;}
+  .picker-row{display:flex;align-items:center;gap:9px;padding:8px 6px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px;}
+  .picker-row:last-child{border-bottom:none;}
+  .picker-row:hover{background:var(--surface-2);}
+  .picker-row.active{background:var(--accent-soft);}
+  .picker-row .picker-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .result .icon{width:34px;height:34px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10.5px;font-weight:600;color:var(--muted);flex:none;}
   .result .meta{min-width:0;flex:1;}
   .result .rtitle{font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
@@ -311,49 +339,79 @@
 
 <div class="shell" id="appShell" style="display:none;">
 
-  <header class="top">
-    <div class="brand">
-      <h1>Enfermería Roxy</h1>
-      <span class="tag">Lic. en Enfermería · Plan 2017</span>
-      <div id="userBar" style="display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;"></div>
-    </div>
-    <form class="searchbar" id="searchForm">
-      <input id="searchInput" type="text" placeholder="Buscar por título, materia o contenido…" autocomplete="off" list="recentSearches">
-      <datalist id="recentSearches"></datalist>
-      <button type="submit" id="searchBtn">Buscar</button>
-      <button type="button" class="ghost" id="uploadBtn">Subir material ⬆</button>
-      <input type="file" id="uploadInput" multiple style="display:none;">
-    </form>
-  </header>
-  <div id="uploadStatus"></div>
-
-  <div id="connectArea"></div>
-
-  <section class="inbox" id="inbox" style="display:none;">
-    <div class="inbox-head" id="inboxHead">
-      <div class="title">📥 Bandeja de Facultad <span class="pill muted" id="inboxCount">sin revisar</span></div>
-      <span class="chev">▸</span>
-    </div>
-    <div class="inbox-body" id="inboxBody">
-      <div class="inbox-note">Tocá para revisar si hay algo nuevo para clasificar.</div>
-    </div>
-  </section>
-
-  <section class="split">
-    <div class="panel">
-      <h2>Resultados</h2>
-      <div id="multiSelectBar" style="display:none;"></div>
-      <div class="results" id="results">
-        <div class="empty-state"><div class="big">＿</div>Escribí algo arriba para buscar en el Drive.</div>
+  <div class="app-layout">
+    <nav class="app-nav">
+      <div class="nav-brand">
+        <div class="nav-brand-title">Enfermería Roxy</div>
+        <div class="nav-brand-sub">Lic. en Enfermería · Plan 2017</div>
       </div>
-    </div>
-    <div class="panel">
-      <h2>Vista previa</h2>
-      <div class="preview-body" id="preview">
-        <div class="empty-state"><div class="big">▢</div>Elegí un resultado para verlo acá.</div>
+      <div class="nav-items">
+        <button type="button" class="nav-item active" data-section="buscar">🔍 Buscar</button>
+        <button type="button" class="nav-item" data-section="preview" disabled>🖼 Vista previa</button>
+        <button type="button" class="nav-item" data-section="resumen" disabled>✨ Resumen</button>
+        <button type="button" class="nav-item" data-section="examen" disabled>📝 Examen</button>
+        <button type="button" class="nav-item" data-section="preguntas" disabled>💬 Preguntas</button>
       </div>
-    </div>
-  </section>
+      <div class="nav-footer" id="userBar"></div>
+    </nav>
+
+    <main class="app-main">
+      <section class="app-section" data-section-panel="buscar">
+        <form class="searchbar" id="searchForm">
+          <input id="searchInput" type="text" placeholder="Buscar por título, materia o contenido…" autocomplete="off" list="recentSearches">
+          <datalist id="recentSearches"></datalist>
+          <button type="submit" id="searchBtn">Buscar</button>
+          <button type="button" class="ghost" id="uploadBtn">Subir material ⬆</button>
+          <input type="file" id="uploadInput" multiple style="display:none;">
+        </form>
+        <div id="uploadStatus"></div>
+
+        <div id="connectArea"></div>
+
+        <section class="inbox" id="inbox" style="display:none;">
+          <div class="inbox-head" id="inboxHead">
+            <div class="title">📥 Bandeja de Facultad <span class="pill muted" id="inboxCount">sin revisar</span></div>
+            <span class="chev">▸</span>
+          </div>
+          <div class="inbox-body" id="inboxBody">
+            <div class="inbox-note">Tocá para revisar si hay algo nuevo para clasificar.</div>
+          </div>
+        </section>
+
+        <div id="selectionBanners" style="margin-top:14px;"></div>
+
+        <div class="panel">
+          <h2>Resultados</h2>
+          <div id="selectionSummary"></div>
+          <div class="results" id="results">
+            <div class="empty-state"><div class="big">＿</div>Escribí algo arriba para buscar en el Drive.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="app-section" data-section-panel="preview" hidden>
+        <div class="panel" style="margin-bottom:14px;">
+          <h2>Elegí un archivo</h2>
+          <div class="file-picker" id="previewPicker"></div>
+        </div>
+        <div class="preview-body" id="preview">
+          <div class="empty-state"><div class="big">▢</div>Elegí un resultado para verlo acá.</div>
+        </div>
+      </section>
+
+      <section class="app-section" data-section-panel="resumen" hidden>
+        <div id="resumenSectionBody"></div>
+      </section>
+
+      <section class="app-section" data-section-panel="examen" hidden>
+        <div id="examenSectionBody"></div>
+      </section>
+
+      <section class="app-section" data-section-panel="preguntas" hidden>
+        <div id="preguntasSectionBody"></div>
+      </section>
+    </main>
+  </div>
 
   <footer class="note">
     Enfermería Roxy · conectado directo a Google Drive.
@@ -702,13 +760,11 @@
       var idxPos=Number(checked.getAttribute("data-index-topic"));
       var topic=(idx.topics||[])[idxPos];
       closeIndexModal();
-      renderPreview(file);
-      setTimeout(function(){
-        var input=document.getElementById("summarizeTopic");
-        if(input)input.value=topic.title||"";
-        var box=document.getElementById("summaryResult");
-        generateSummary([file],topic.title||"",box);
-      },0);
+      selectedIds[file.id]=true;
+      resumenPickedId=file.id;
+      resumenSelectedTopic=topic.title||"";
+      updateNavAvailability();
+      setActiveSection("resumen");
     });
 
     var selectedExam=content.querySelector("#indexExamSelected");
@@ -718,12 +774,14 @@
       var idxPos=Number(checked.getAttribute("data-index-topic"));
       var topic=(idx.topics||[])[idxPos];
       closeIndexModal();
-      renderPreview(file);
+      selectedIds[file.id]=true;
+      examenPickedIds={};
+      examenPickedIds[file.id]=true;
+      updateNavAvailability();
+      setActiveSection("examen");
       setTimeout(function(){
-        var input=document.getElementById("summarizeTopic");
+        var input=document.getElementById("examenTopic");
         if(input)input.value=topic.title||"";
-        var controls=document.getElementById("examControls");
-        if(controls) controls.scrollIntoView({behavior:"smooth",block:"center"});
       },0);
     });
     var start=content.querySelector("#indexStartBtn");
@@ -806,57 +864,11 @@
       '<button type="button" class="ghost" id="renameBtn">Renombrar ✎</button>' +
       '<button type="button" class="ghost" id="deleteBtn">Eliminar 🗑</button><button type="button" class="ghost" id="indexBtn">Índice 📑</button>' +
     '</div>' +
-    '<div id="previewActionMsg"></div>' +
-    '<div class="tool-tabs">' +
-      '<button type="button" class="tool-tab active" data-tab="resumen">Resumen ✨</button>' +
-      '<button type="button" class="tool-tab" data-tab="examen">Examen 📝</button>' +
-      '<button type="button" class="tool-tab" data-tab="preguntas">Preguntas 💬</button>' +
-    '</div>' +
-    '<div class="tool-panel" data-panel="resumen">' +
-      '<div class="summarize-row">' +
-        '<input type="text" id="summarizeTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano">' +
-        '<button type="button" class="ghost" id="summarizeBtn">Generar resumen con IA ✨</button>' +
-      '</div>' +
-      '<div id="summaryResult"></div>' +
-    '</div>' +
-    '<div class="tool-panel" data-panel="examen" hidden>' +
-      '<div id="examControls" class="exam-controls">' +
-        '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
-        '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
-        '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
-        '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
-        '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
-      '</div>' +
-      '<div id="examResult"></div>' +
-    '</div>' +
-    '<div class="tool-panel" data-panel="preguntas" hidden>' +
-      '<div class="summarize-row">' +
-        '<input type="text" id="askQuestionInput" placeholder="Ej: ¿Cuáles son las partes de la neurona?">' +
-        '<button type="button" class="ghost" id="askQuestionBtn">Preguntar ❓</button>' +
-      '</div>' +
-      '<button type="button" class="ghost small" id="viewPeopleBtn" style="margin-top:6px;">Ver personas mencionadas 👤</button>' +
-      '<div id="askResult"></div>' +
-    '</div>';
+    '<div id="previewActionMsg"></div>';
     els.preview.innerHTML = html;
 
     var msgEl = document.getElementById("previewActionMsg");
     document.getElementById("indexBtn").addEventListener("click", function(){ openIndexForFile(file); });
-    document.getElementById("viewPeopleBtn").addEventListener("click", function(){
-      pendingIndexFilter = "personas";
-      openIndexForFile(file);
-    });
-
-    Array.prototype.forEach.call(document.querySelectorAll(".tool-tab"), function(tab){
-      tab.addEventListener("click", function(){
-        var name = tab.getAttribute("data-tab");
-        Array.prototype.forEach.call(document.querySelectorAll(".tool-tab"), function(t){
-          t.classList.toggle("active", t === tab);
-        });
-        Array.prototype.forEach.call(document.querySelectorAll(".tool-panel"), function(p){
-          p.hidden = p.getAttribute("data-panel") !== name;
-        });
-      });
-    });
 
     document.getElementById("downloadDriveBtn").addEventListener("click", function(){
       downloadDriveFile(file);
@@ -895,42 +907,6 @@
         })
         .catch(function(err){ msgEl.innerHTML = '<div class="banner danger" style="margin-top:10px;">' + escapeHtml(friendlyDeleteError(err)) + '</div>'; });
     });
-
-    document.getElementById("summarizeBtn").addEventListener("click", function(){
-      var box = document.getElementById("summaryResult");
-      var topic = document.getElementById("summarizeTopic").value.trim();
-      if(!topic){
-        openIndexForFile(file);
-        return;
-      }
-      callDrive({action:"indexStatus",fileId:file.id}).then(function(data){
-        if(data && data.index){
-          generateSummary([file], topic, box);
-        }else{
-          openIndexForFile(file);
-          var c=document.getElementById("indexContent");
-          if(c) c.insertAdjacentHTML("afterbegin", '<div class="banner info" style="margin-top:14px;">Para este tema conviene crear primero el índice permanente del material. La indexación se guardará y no habrá que repetirla.</div>');
-          if(!data || !data.job) startIndexForFile(file);
-        }
-      }).catch(function(err){
-        box.innerHTML='<div class="banner danger" style="margin-top:10px;">No se pudo consultar el índice ('+escapeHtml(err.message||"error")+').</div>';
-      });
-    });
-    document.getElementById("generateExamBtn").addEventListener("click", function(){
-      var topic=document.getElementById("summarizeTopic").value.trim();
-      generateQuestions([file], topic, document.getElementById("examResult"),
-        Number(document.getElementById("examCount").value),
-        document.getElementById("examType").value,
-        Number(document.getElementById("examDifficulty").value),
-        document.getElementById("examAnswers").checked);
-    });
-
-    document.getElementById("askQuestionBtn").addEventListener("click", function(){
-      askQuestion([file], document.getElementById("askQuestionInput").value, document.getElementById("askResult"));
-    });
-    document.getElementById("askQuestionInput").addEventListener("keydown", function(e){
-      if (e.key === "Enter"){ e.preventDefault(); askQuestion([file], this.value, document.getElementById("askResult")); }
-    });
   }
 
   function askQuestion(chosen, question, targetEl){
@@ -938,7 +914,7 @@
     if (!chosen || !chosen.length) return;
     var cleanQuestion = (question || "").trim();
     if (!cleanQuestion){ alert("Escribí una pregunta."); return; }
-    var btn = document.getElementById("askQuestionBtn") || document.getElementById("multiAskBtn");
+    var btn = document.getElementById("preguntasAskBtn");
     if (btn){ btn.disabled = true; btn.textContent = "Buscando la respuesta…"; }
     target.innerHTML =
       '<div class="preview-title">Pregunta y respuesta</div>' +
@@ -990,7 +966,7 @@
 
   function viewPeopleAcrossFiles(chosen){
     if (!chosen || !chosen.length) return;
-    var btn = document.getElementById("multiViewPeopleBtn");
+    var btn = document.getElementById("preguntasPeopleBtn");
     if (btn){ btn.disabled = true; btn.textContent = "Buscando personas…"; }
     Promise.all(chosen.map(function(f){
       return callDrive({ action:"indexStatus", fileId:f.id })
@@ -1043,7 +1019,7 @@
       chip.addEventListener("click", function(){
         var name = chip.getAttribute("data-person");
         closeReader();
-        var input = document.getElementById("multiQuestionInput") || document.getElementById("askQuestionInput");
+        var input = document.getElementById("preguntasInput");
         if (input){
           input.value = "¿Quién fue " + name + " y qué aportó?";
           input.focus();
@@ -1151,139 +1127,244 @@
   var indexPollBusy = false;
   var pendingIndexFilter = null;
 
-  function renderMultiSelectBar(){
-    var bar = document.getElementById("multiSelectBar");
-    var ids = Object.keys(selectedIds).filter(function(id){ return selectedIds[id]; });
-    if (ids.length < 1){ bar.style.display = "none"; bar.innerHTML = ""; return; }
+  var activeSection = "buscar";
+  var previewPickedId = null;
+  var resumenPickedId = null;
+  var resumenSelectedTopic = "";
+  var examenPickedIds = {};
+  var preguntasPickedIds = {};
+  var indexStatusCache = {};
 
-    var previousOverride = document.getElementById("multiTopicOverride");
-    var overrideValue = previousOverride ? previousOverride.value.trim() : "";
+  function getSelectedFiles(){
+    return (lastSearchResults||[]).filter(function(f){ return selectedIds[f.id]; });
+  }
 
-    bar.style.display = "flex";
-    bar.innerHTML =
-      '<span class="count">' + ids.length + (ids.length === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
-      '<div style="flex:1;min-width:220px;">' +
-        '<div class="muted" style="font-size:13px;">El tema de la búsqueda se utilizará automáticamente para el resumen y las preguntas de examen.</div>' +
-        '<button type="button" class="ghost small" id="changeAiTopicBtn" style="margin-top:6px;">Cambiar tema para IA</button>' +
-        '<div id="aiTopicOverrideWrap" style="display:none;margin-top:7px;">' +
-          '<input type="text" id="multiTopicOverride" value="' + escapeHtml(overrideValue) + '" placeholder="Tema específico para IA">' +
-          '<div class="muted" style="font-size:12px;margin-top:4px;">Usá esta opción solo si querés buscar una cosa y resumir otra.</div>' +
-        '</div>' +
-      '</div>' +
-      '<button type="button" class="ghost" id="multiClearBtn">Deseleccionar</button>' +
-      '<div class="tool-tabs" style="flex-basis:100%;">' +
-        '<button type="button" class="tool-tab active" data-multitab="resumen">Resumen ✨</button>' +
-        '<button type="button" class="tool-tab" data-multitab="examen">Examen 📝</button>' +
-        '<button type="button" class="tool-tab" data-multitab="preguntas">Preguntas 💬</button>' +
-      '</div>' +
-      '<div class="tool-panel" data-multipanel="resumen" style="flex-basis:100%;">' +
-        '<div class="summary-controls">' +
-          '<div class="summary-control">' +
-            '<label for="summaryLevel">Nivel de resumen <strong id="summaryLevelValue">3 — Equilibrado</strong></label>' +
-            '<input type="range" id="summaryLevel" min="1" max="5" step="1" value="3">' +
-            '<div class="scale-label"><span>Breve</span><span>Muy detallado</span></div>' +
-          '</div>' +
-          '<div class="summary-control">' +
-            '<label for="technicalLevel">Nivel de tecnicismo <strong id="technicalLevelValue">3 — Académico</strong></label>' +
-            '<input type="range" id="technicalLevel" min="1" max="5" step="1" value="3">' +
-            '<div class="scale-label"><span>Introductorio</span><span>Profesional</span></div>' +
-          '</div>' +
-        '</div>' +
-        '<button type="button" id="multiSummarizeBtn" style="margin-top:10px;">Generar resumen con IA ✨</button>' +
-      '</div>' +
-      '<div class="tool-panel" data-multipanel="examen" style="flex-basis:100%;" hidden>' +
-        '<div id="multiExamControls" class="exam-controls">' +
-          '<div><label for="multiExamCount">Cantidad</label><select id="multiExamCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
-          '<div><label for="multiExamType">Tipo</label><select id="multiExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
-          '<div><label for="multiExamDifficulty">Dificultad</label><select id="multiExamDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
-          '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="multiExamAnswers" checked> Mostrar respuestas y explicación</label>' +
-          '<button type="button" id="generateMultiExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="tool-panel" data-multipanel="preguntas" style="flex-basis:100%;" hidden>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-          '<input type="text" id="multiQuestionInput" placeholder="Preguntá algo puntual sobre los archivos seleccionados 💬">' +
-          '<button type="button" class="ghost" id="multiAskBtn">Preguntar ❓</button>' +
-        '</div>' +
-        '<button type="button" class="ghost small" id="multiViewPeopleBtn" style="margin-top:8px;">Ver personas mencionadas 👤</button>' +
-      '</div>';
-
-    document.getElementById("changeAiTopicBtn").addEventListener("click", function(){
-      var wrap = document.getElementById("aiTopicOverrideWrap");
-      wrap.style.display = wrap.style.display === "none" ? "block" : "none";
-      this.textContent = wrap.style.display === "none" ? "Cambiar tema para IA" : "Usar tema de búsqueda";
-    });
-
-    document.getElementById("multiClearBtn").addEventListener("click", function(){
+  function renderSelectionSummary(){
+    var wrap = document.getElementById("selectionSummary");
+    if (!wrap) return;
+    var n = getSelectedFiles().length;
+    if (!n){ wrap.innerHTML = ""; return; }
+    wrap.innerHTML = '<span class="count">' + n + (n === 1 ? ' seleccionado' : ' seleccionados') + '</span>' +
+      '<button type="button" class="ghost small" id="clearSelectionBtn">Deseleccionar</button>';
+    document.getElementById("clearSelectionBtn").addEventListener("click", function(){
       selectedIds = {};
       renderResults(lastSearchResults);
     });
+  }
 
-    Array.prototype.forEach.call(bar.querySelectorAll(".tool-tab"), function(tab){
-      tab.addEventListener("click", function(){
-        var name = tab.getAttribute("data-multitab");
-        Array.prototype.forEach.call(bar.querySelectorAll(".tool-tab"), function(t){
-          t.classList.toggle("active", t === tab);
-        });
-        Array.prototype.forEach.call(bar.querySelectorAll(".tool-panel"), function(p){
-          p.hidden = p.getAttribute("data-multipanel") !== name;
-        });
+  function pickerRowHtml(f, inputType, name, checked){
+    return '<label class="picker-row' + (checked?' active':'') + '">' +
+      '<input type="' + inputType + '" name="' + name + '" data-id="' + escapeHtml(f.id) + '"' + (checked?' checked':'') + '>' +
+      '<span class="picker-name">' + escapeHtml(f.name) + '</span>' +
+      (indexStatusCache[f.id] && indexStatusCache[f.id].index ? '<span class="index-badge">📑</span>' : '') +
+    '</label>';
+  }
+
+  function renderSelectionBanners(){
+    var wrap = document.getElementById("selectionBanners");
+    if (!wrap) return;
+    var files = getSelectedFiles();
+    var unindexed = files.filter(function(f){ var d = indexStatusCache[f.id]; return !(d && d.index); });
+    if (!unindexed.length){ wrap.innerHTML = ""; return; }
+    wrap.innerHTML = unindexed.map(function(f){
+      return '<div class="banner warn" style="margin-bottom:8px;align-items:center;">' +
+        '<span style="flex:1;">El archivo "' + escapeHtml(f.name) + '" debe ser indexado para poder trabajar con él.</span>' +
+        '<button type="button" class="small" data-indexnow="' + escapeHtml(f.id) + '">Indexar archivo</button>' +
+      '</div>';
+    }).join("");
+    Array.prototype.forEach.call(wrap.querySelectorAll("[data-indexnow]"), function(btn){
+      btn.addEventListener("click", function(){
+        var file = files.find(function(f){ return f.id === btn.getAttribute("data-indexnow"); });
+        if (file) openIndexForFile(file);
       });
     });
+  }
 
-    document.getElementById("multiAskBtn").addEventListener("click", function(){
-      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      askQuestion(chosen, document.getElementById("multiQuestionInput").value, els.preview);
+  function updateNavAvailability(){
+    var has = getSelectedFiles().length > 0;
+    Array.prototype.forEach.call(document.querySelectorAll(".nav-item[data-section]"), function(btn){
+      if (btn.getAttribute("data-section") === "buscar") return;
+      btn.disabled = !has;
     });
-    document.getElementById("multiQuestionInput").addEventListener("keydown", function(e){
-      if (e.key === "Enter"){
-        e.preventDefault();
-        var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-        askQuestion(chosen, this.value, els.preview);
-      }
-    });
+    if (!has && activeSection !== "buscar") setActiveSection("buscar");
+  }
 
-    document.getElementById("multiViewPeopleBtn").addEventListener("click", function(){
-      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      viewPeopleAcrossFiles(chosen);
+  function setActiveSection(name){
+    activeSection = name;
+    Array.prototype.forEach.call(document.querySelectorAll(".nav-item[data-section]"), function(b){
+      b.classList.toggle("active", b.getAttribute("data-section") === name);
     });
+    Array.prototype.forEach.call(document.querySelectorAll(".app-section"), function(s){
+      s.hidden = s.getAttribute("data-section-panel") !== name;
+    });
+    if (name === "preview") renderVistaPreviaSection();
+    else if (name === "resumen") renderResumenSection();
+    else if (name === "examen") renderExamenSection();
+    else if (name === "preguntas") renderPreguntasSection();
+  }
 
-    function getAiTopic(){
-      var override = document.getElementById("multiTopicOverride");
-      return override && override.value.trim()
-        ? override.value.trim()
-        : document.getElementById("searchInput").value.trim();
+  Array.prototype.forEach.call(document.querySelectorAll(".nav-item[data-section]"), function(btn){
+    btn.addEventListener("click", function(){
+      if (btn.disabled) return;
+      setActiveSection(btn.getAttribute("data-section"));
+    });
+  });
+
+  function renderVistaPreviaSection(){
+    var files = getSelectedFiles();
+    var pickerWrap = document.getElementById("previewPicker");
+    if (!files.length){
+      pickerWrap.innerHTML = "";
+      renderPreview(null);
+      return;
     }
+    if (!previewPickedId || !files.some(function(f){ return f.id === previewPickedId; })) previewPickedId = files[0].id;
+    pickerWrap.innerHTML = files.map(function(f){ return pickerRowHtml(f, "radio", "picker-preview", f.id === previewPickedId); }).join("");
+    Array.prototype.forEach.call(pickerWrap.querySelectorAll("input"), function(inp){
+      inp.addEventListener("change", function(){ previewPickedId = inp.getAttribute("data-id"); renderVistaPreviaSection(); });
+    });
+    renderPreview(files.find(function(f){ return f.id === previewPickedId; }));
+  }
 
-    function updateSummaryControls(){
-      var levels=["Breve","Breve","Equilibrado","Detallado","Muy detallado"];
-      var tech=["Introductorio","Básico","Académico","Técnico","Profesional"];
-      var sl=document.getElementById("summaryLevel"), tl=document.getElementById("technicalLevel");
+  function wireSummaryLevelLabels(){
+    var levels=["Breve","Breve","Equilibrado","Detallado","Muy detallado"];
+    var tech=["Introductorio","Básico","Académico","Técnico","Profesional"];
+    var sl=document.getElementById("summaryLevel"), tl=document.getElementById("technicalLevel");
+    function update(){
       if(sl) document.getElementById("summaryLevelValue").textContent=sl.value+" — "+levels[Number(sl.value)-1];
       if(tl) document.getElementById("technicalLevelValue").textContent=tl.value+" — "+tech[Number(tl.value)-1];
     }
-    document.getElementById("summaryLevel").addEventListener("input", updateSummaryControls);
-    document.getElementById("technicalLevel").addEventListener("input", updateSummaryControls);
-    updateSummaryControls();
+    if(sl) sl.addEventListener("input", update);
+    if(tl) tl.addEventListener("input", update);
+    update();
+  }
 
-    document.getElementById("generateMultiExamBtn").addEventListener("click", function(){
-      var topic=getAiTopic();
-      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      generateQuestions(chosen,topic,els.preview,
-        Number(document.getElementById("multiExamCount").value),
-        document.getElementById("multiExamType").value,
-        Number(document.getElementById("multiExamDifficulty").value),
-        document.getElementById("multiExamAnswers").checked);
+  function renderResumenSection(){
+    var body = document.getElementById("resumenSectionBody");
+    var all = getSelectedFiles();
+    if (!all.length){ body.innerHTML = '<div class="empty-state">Seleccioná uno o más archivos en Buscar primero.</div>'; return; }
+    var indexed = all.filter(function(f){ var d = indexStatusCache[f.id]; return d && d.index; });
+    if (!indexed.length){ body.innerHTML = '<div class="banner warn">Ninguno de los archivos seleccionados tiene índice todavía. Volvé a Buscar y generá el índice antes de pedir un resumen.</div>'; return; }
+    if (!resumenPickedId || !indexed.some(function(f){ return f.id === resumenPickedId; })){ resumenPickedId = indexed[0].id; resumenSelectedTopic = ""; }
+    var notIndexedCount = all.length - indexed.length;
+    var html = "";
+    if (notIndexedCount > 0) html += '<div class="banner warn" style="margin-bottom:12px;">' + notIndexedCount + ' archivo(s) seleccionados no tienen índice y no aparecen acá.</div>';
+    html += '<div class="panel" style="margin-bottom:14px;"><h2>Elegí un archivo</h2><div class="file-picker" id="resumenPicker"></div></div>';
+    html += '<div class="panel" style="margin-bottom:14px;"><h2>Tema</h2><div class="index-topics" id="resumenTopics" style="max-height:240px;"></div></div>';
+    html += '<div class="summary-controls">' +
+      '<div class="summary-control"><label for="summaryLevel">Nivel de resumen <strong id="summaryLevelValue">3 — Equilibrado</strong></label><input type="range" id="summaryLevel" min="1" max="5" step="1" value="3"><div class="scale-label"><span>Breve</span><span>Muy detallado</span></div></div>' +
+      '<div class="summary-control"><label for="technicalLevel">Nivel de tecnicismo <strong id="technicalLevelValue">3 — Académico</strong></label><input type="range" id="technicalLevel" min="1" max="5" step="1" value="3"><div class="scale-label"><span>Introductorio</span><span>Profesional</span></div></div>' +
+    '</div>';
+    html += '<button type="button" id="resumenGenBtn" style="margin-top:12px;">Generar resumen con IA ✨</button>';
+    html += '<div id="resumenResult"></div>';
+    body.innerHTML = html;
+
+    var picker = document.getElementById("resumenPicker");
+    picker.innerHTML = indexed.map(function(f){ return pickerRowHtml(f, "radio", "picker-resumen", f.id === resumenPickedId); }).join("");
+    Array.prototype.forEach.call(picker.querySelectorAll("input"), function(inp){
+      inp.addEventListener("change", function(){ resumenPickedId = inp.getAttribute("data-id"); resumenSelectedTopic = ""; renderResumenSection(); });
     });
 
-    document.getElementById("multiSummarizeBtn").addEventListener("click", function(){
-      var topic=getAiTopic();
-      var chosen=lastSearchResults.filter(function(f){ return selectedIds[f.id]; });
-      var summaryLevel=Number(document.getElementById("summaryLevel").value)||3;
-      var technicalLevel=Number(document.getElementById("technicalLevel").value)||3;
-      generateSummary(chosen,topic,els.preview,summaryLevel,technicalLevel);
+    var topicsWrap = document.getElementById("resumenTopics");
+    var idxData = indexStatusCache[resumenPickedId];
+    var topics = (idxData && idxData.index && idxData.index.topics) || [];
+    var topicsHtml = '<label class="index-topic"><input type="radio" name="picker-resumen-topic" value="" checked><span class="topic-name">Resumen general (todo el material)</span></label>';
+    topics.forEach(function(t){
+      var child = !!(t.parent && String(t.parent).trim());
+      topicsHtml += '<label class="index-topic' + (child?' child':'') + '"><input type="radio" name="picker-resumen-topic" value="' + escapeHtml(t.title||"") + '"><span class="topic-name">' + escapeHtml(t.title||"") + (child?' <span style="color:var(--muted);">· '+escapeHtml(t.parent)+'</span>':'') + '</span></label>';
+    });
+    topicsWrap.innerHTML = topicsHtml;
+    Array.prototype.forEach.call(topicsWrap.querySelectorAll("input"), function(inp){
+      if (inp.value === resumenSelectedTopic) inp.checked = true;
+      inp.addEventListener("change", function(){ resumenSelectedTopic = inp.value; });
+    });
+
+    wireSummaryLevelLabels();
+
+    document.getElementById("resumenGenBtn").addEventListener("click", function(){
+      var file = indexed.find(function(f){ return f.id === resumenPickedId; });
+      var sl = Number(document.getElementById("summaryLevel").value) || 3;
+      var tl = Number(document.getElementById("technicalLevel").value) || 3;
+      generateSummary([file], resumenSelectedTopic, document.getElementById("resumenResult"), sl, tl);
     });
   }
+
+  function renderExamenSection(){
+    var body = document.getElementById("examenSectionBody");
+    var all = getSelectedFiles();
+    if (!all.length){ body.innerHTML = '<div class="empty-state">Seleccioná uno o más archivos en Buscar primero.</div>'; return; }
+    if (!Object.keys(examenPickedIds).some(function(id){ return examenPickedIds[id] && all.some(function(f){return f.id===id;}); })){
+      examenPickedIds = {}; all.forEach(function(f){ examenPickedIds[f.id] = true; });
+    }
+    var html = '<div class="panel" style="margin-bottom:14px;"><h2>Archivos</h2><div class="file-picker" id="examenPicker"></div></div>';
+    html += '<div class="summarize-row"><input type="text" id="examenTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano"></div>';
+    html += '<div id="examControls" class="exam-controls">' +
+      '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
+      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
+      '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
+      '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
+      '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
+    '</div>';
+    html += '<div id="examResult"></div>';
+    body.innerHTML = html;
+
+    var picker = document.getElementById("examenPicker");
+    picker.innerHTML = all.map(function(f){ return pickerRowHtml(f, "checkbox", "picker-examen", !!examenPickedIds[f.id]); }).join("");
+    Array.prototype.forEach.call(picker.querySelectorAll("input"), function(inp){
+      inp.addEventListener("change", function(){
+        var id = inp.getAttribute("data-id");
+        if (inp.checked) examenPickedIds[id] = true; else delete examenPickedIds[id];
+      });
+    });
+
+    document.getElementById("generateExamBtn").addEventListener("click", function(){
+      var chosen = all.filter(function(f){ return examenPickedIds[f.id]; });
+      if (!chosen.length){ alert("Elegí al menos un archivo."); return; }
+      var topic = document.getElementById("examenTopic").value.trim();
+      generateQuestions(chosen, topic, document.getElementById("examResult"),
+        Number(document.getElementById("examCount").value),
+        document.getElementById("examType").value,
+        Number(document.getElementById("examDifficulty").value),
+        document.getElementById("examAnswers").checked);
+    });
+  }
+
+  function renderPreguntasSection(){
+    var body = document.getElementById("preguntasSectionBody");
+    var all = getSelectedFiles();
+    if (!all.length){ body.innerHTML = '<div class="empty-state">Seleccioná uno o más archivos en Buscar primero.</div>'; return; }
+    if (!Object.keys(preguntasPickedIds).some(function(id){ return preguntasPickedIds[id] && all.some(function(f){return f.id===id;}); })){
+      preguntasPickedIds = {}; all.forEach(function(f){ preguntasPickedIds[f.id] = true; });
+    }
+    var html = '<div class="panel" style="margin-bottom:14px;"><h2>Archivos</h2><div class="file-picker" id="preguntasPicker"></div></div>';
+    html += '<div class="summarize-row">' +
+      '<input type="text" id="preguntasInput" placeholder="Ej: ¿Cuáles son las partes de la neurona?">' +
+      '<button type="button" class="ghost" id="preguntasAskBtn">Preguntar ❓</button>' +
+    '</div>';
+    html += '<button type="button" class="ghost small" id="preguntasPeopleBtn" style="margin-top:8px;">Ver personas mencionadas 👤</button>';
+    html += '<div id="preguntasResult"></div>';
+    body.innerHTML = html;
+
+    var picker = document.getElementById("preguntasPicker");
+    picker.innerHTML = all.map(function(f){ return pickerRowHtml(f, "checkbox", "picker-preguntas", !!preguntasPickedIds[f.id]); }).join("");
+    Array.prototype.forEach.call(picker.querySelectorAll("input"), function(inp){
+      inp.addEventListener("change", function(){
+        var id = inp.getAttribute("data-id");
+        if (inp.checked) preguntasPickedIds[id] = true; else delete preguntasPickedIds[id];
+      });
+    });
+
+    function ask(){
+      var chosen = all.filter(function(f){ return preguntasPickedIds[f.id]; });
+      askQuestion(chosen, document.getElementById("preguntasInput").value, document.getElementById("preguntasResult"));
+    }
+    document.getElementById("preguntasAskBtn").addEventListener("click", ask);
+    document.getElementById("preguntasInput").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); ask(); } });
+    document.getElementById("preguntasPeopleBtn").addEventListener("click", function(){
+      viewPeopleAcrossFiles(all.filter(function(f){ return preguntasPickedIds[f.id]; }));
+    });
+  }
+
 
   function generateSummary(chosen, topic, targetEl, summaryLevel, technicalLevel){
     var target = targetEl || els.preview;
@@ -1291,7 +1372,7 @@
     var cleanTopic = (topic || "").trim();
     summaryLevel = Number(summaryLevel) || 3;
     technicalLevel = Number(technicalLevel) || 3;
-    var btn = document.getElementById("multiSummarizeBtn");
+    var btn = document.getElementById("resumenGenBtn");
     if (btn){ btn.disabled = true; btn.textContent = "Generando resumen…"; }
     target.innerHTML =
       '<div class="preview-title">Resumen con IA</div>' +
@@ -1430,6 +1511,7 @@
         if(!row) return;
         var status=row.querySelector(".index-status");
         if(!status) return;
+        indexStatusCache[file.id] = data;
         if(data && data.index){
           status.className="index-badge";
           status.textContent="📑 Índice generado";
@@ -1441,16 +1523,20 @@
         }else{
           status.className="rsub index-status";
           status.textContent="Sin índice";
-          status.title="Todavía no se generó un índice para este archivo."; 
+          status.title="Todavía no se generó un índice para este archivo.";
         }
       });
+      renderSelectionBanners();
+      updateNavAvailability(); renderSelectionSummary();
+      if (activeSection === "resumen") renderResumenSection();
     });
   }
 
   function renderResults(files){
     if (!files || !files.length){
       els.results.innerHTML = '<div class="empty-state"><div class="big">∅</div>Sin resultados. Probá con otro término.</div>';
-      document.getElementById("multiSelectBar").style.display = "none";
+      updateNavAvailability();
+      renderSelectionBanners(); renderSelectionSummary();
       return;
     }
     var byName = {};
@@ -1473,7 +1559,8 @@
     });
     els.results.innerHTML = html;
     var byId = {}; files.forEach(function(f){ byId[f.id] = f; });
-    renderMultiSelectBar();
+    updateNavAvailability();
+    renderSelectionBanners(); renderSelectionSummary();
     markIndexStatuses(files);
 
     Array.prototype.forEach.call(els.results.querySelectorAll(".sel-check"), function(cb){
@@ -1481,16 +1568,16 @@
       cb.addEventListener("change", function(){
         var id = cb.getAttribute("data-id");
         if (cb.checked) selectedIds[id] = true; else delete selectedIds[id];
-        renderMultiSelectBar();
+        updateNavAvailability();
+        renderSelectionBanners(); renderSelectionSummary();
       });
     });
 
     Array.prototype.forEach.call(els.results.querySelectorAll(".result"), function(row){
       row.addEventListener("click", function(e){
         if (e.target.closest(".compare-btn") || e.target.closest(".sel-check")) return;
-        Array.prototype.forEach.call(els.results.querySelectorAll(".result"), function(r){ r.classList.remove("active"); });
-        row.classList.add("active");
-        renderPreview(byId[row.getAttribute("data-id")]);
+        var cb = row.querySelector(".sel-check");
+        if (cb){ cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); }
       });
     });
 
@@ -1580,7 +1667,7 @@
     if (!term) return;
     saveRecentSearch(term);
     selectedIds = {};
-    document.getElementById("multiSelectBar").style.display = "none";
+    renderSelectionSummary();
     els.results.innerHTML = '<div class="empty-state"><span class="spin"></span>&nbsp; Buscando…</div>';
     callDrive({ action: "search", term: term })
       .then(function(payload){ lastSearchResults = payload.files || []; renderResults(lastSearchResults); })
