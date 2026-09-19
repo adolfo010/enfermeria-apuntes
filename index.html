@@ -679,6 +679,11 @@
         if(term)term.textContent=this.value;
       }
     });
+    if(topicFilter && pendingIndexFilter){
+      topicFilter.value=pendingIndexFilter;
+      topicFilter.dispatchEvent(new Event("input",{bubbles:true}));
+    }
+    pendingIndexFilter=null;
 
     var checks=content.querySelectorAll(".index-topic-check");
     checks.forEach(function(ch){ch.addEventListener("change",function(){checks.forEach(function(other){if(other!==ch)other.checked=false;});});});
@@ -808,6 +813,7 @@
       '<input type="text" id="askQuestionInput" placeholder="Ej: ¿Cuáles son las partes de la neurona?">' +
       '<button type="button" class="ghost" id="askQuestionBtn">Preguntar ❓</button>' +
     '</div>' +
+    '<button type="button" class="ghost small" id="viewPeopleBtn" style="margin-top:6px;">Ver personas mencionadas 👤</button>' +
     '<div id="summaryResult"></div>' +
     '<div id="examResult"></div>' +
     '<div id="askResult"></div>';
@@ -815,6 +821,10 @@
 
     var msgEl = document.getElementById("previewActionMsg");
     document.getElementById("indexBtn").addEventListener("click", function(){ openIndexForFile(file); });
+    document.getElementById("viewPeopleBtn").addEventListener("click", function(){
+      pendingIndexFilter = "personas";
+      openIndexForFile(file);
+    });
 
     document.getElementById("downloadDriveBtn").addEventListener("click", function(){
       downloadDriveFile(file);
@@ -1042,6 +1052,7 @@
   var indexFileState = null;
   var indexPollTimer = null;
   var indexPollBusy = false;
+  var pendingIndexFilter = null;
 
   function renderMultiSelectBar(){
     var bar = document.getElementById("multiSelectBar");
