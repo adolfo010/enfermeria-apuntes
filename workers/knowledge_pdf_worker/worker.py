@@ -14,7 +14,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6")
 KNOWLEDGE_USER_ID = os.environ.get("KNOWLEDGE_USER_ID", "")
 DEFAULT_CHUNK_PAGES = 3
 
