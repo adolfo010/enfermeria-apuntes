@@ -60,7 +60,7 @@ create table if not exists public.knowledge_fragment_concepts (
 create table if not exists public.knowledge_document_concepts (
   document_id bigint not null references public.knowledge_documents(id) on delete cascade,
   concept_id bigint not null references public.knowledge_concepts(id) on delete cascade,
-  coverage text,
+  coverage numeric(5,4),
   source_role text,
   page_start integer,
   page_end integer,
@@ -94,3 +94,29 @@ create index if not exists idx_kc_parent
 
 create index if not exists idx_kca_alias
   on public.knowledge_concept_aliases(normalized_alias);
+
+
+-- Shared academic knowledge: authenticated users may read the prototype.
+-- No anonymous access is granted.
+alter table public.knowledge_documents enable row level security;
+alter table public.knowledge_fragments enable row level security;
+alter table public.knowledge_concepts enable row level security;
+alter table public.knowledge_concept_aliases enable row level security;
+alter table public.knowledge_fragment_concepts enable row level security;
+alter table public.knowledge_document_concepts enable row level security;
+alter table public.knowledge_concept_relations enable row level security;
+
+create policy "knowledge_documents_authenticated_read"
+  on public.knowledge_documents for select to authenticated using (true);
+create policy "knowledge_fragments_authenticated_read"
+  on public.knowledge_fragments for select to authenticated using (true);
+create policy "knowledge_concepts_authenticated_read"
+  on public.knowledge_concepts for select to authenticated using (true);
+create policy "knowledge_concept_aliases_authenticated_read"
+  on public.knowledge_concept_aliases for select to authenticated using (true);
+create policy "knowledge_fragment_concepts_authenticated_read"
+  on public.knowledge_fragment_concepts for select to authenticated using (true);
+create policy "knowledge_document_concepts_authenticated_read"
+  on public.knowledge_document_concepts for select to authenticated using (true);
+create policy "knowledge_concept_relations_authenticated_read"
+  on public.knowledge_concept_relations for select to authenticated using (true);
