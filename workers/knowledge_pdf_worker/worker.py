@@ -323,8 +323,20 @@ def process_file(file_id: str, chunk_pages: int) -> None:
         )
 
         if job["status"] == "completed":
+            if int(job.get("total_pages") or total_pages) != total_pages:
+                raise RuntimeError(
+                    f"El job {job['id']} figura completado con {job.get('total_pages')} páginas, "
+                    f"pero Drive informa {total_pages}. El documento cambió; no se reutiliza ese job."
+                )
             print(f"Job ya completado: {job['id']}")
             return
+
+        existing_total_pages = int(job.get("total_pages") or total_pages)
+        if existing_total_pages != total_pages:
+            raise RuntimeError(
+                f"El job {job['id']} fue creado con {existing_total_pages} páginas, "
+                f"pero el PDF actual tiene {total_pages}. No se reanuda automáticamente."
+            )
 
         existing_chunk_pages = int(job.get("chunk_pages") or chunk_pages)
         if existing_chunk_pages != chunk_pages:
