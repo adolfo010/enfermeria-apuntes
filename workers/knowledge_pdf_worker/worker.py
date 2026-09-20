@@ -3,9 +3,27 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
+
+import requests
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
+
+def require_env() -> None:
+    missing = [n for n,v in (("SUPABASE_URL",SUPABASE_URL),("SUPABASE_SERVICE_ROLE_KEY",SUPABASE_SERVICE_ROLE_KEY),("GOOGLE_ACCESS_TOKEN",GOOGLE_ACCESS_TOKEN)) if not v]
+    if missing: raise SystemExit("Faltan secretos: " + ", ".join(missing))
+
+def drive_download(file_id: str, destination: Path) -> None:
+    with requests.get(f"https://www.googleapis.com/drive/v3/files/{file_id}", params={"alt":"media"}, headers={"Authorization":f"Bearer {GOOGLE_ACCESS_TOKEN}"}, stream=True, timeout=(30,300)) as response:
+        response.raise_for_status()
+        with destination.open("wb") as fh:
+            for part in response.iter_content(chunk_size=1024 * 1024):
+                if part: fh.write(part)
+
 
 
 def write_chunk(reader: PdfReader, start: int, end: int, output: Path) -> None:
@@ -39,14 +57,18 @@ def inspect_pdf(pdf_path: Path, chunk_pages: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("pdf", type=Path)
+    parser.add_argument("pdf", type=Path, nargs="?")
     parser.add_argument("--chunk-pages", type=int, default=3)
     args = parser.parse_args()
     if args.chunk_pages < 1 or args.chunk_pages > 10:
         raise SystemExit("chunk-pages debe estar entre 1 y 10")
-    if not args.pdf.is_file():
+    if args.pdf and not args.pdf.is_file():
         raise SystemExit(f"No existe: {args.pdf}")
-    inspect_pdf(args.pdf, args.chunk_pages)
+    
+    if args.pdf:
+        inspect_pdf(args.pdf, args.chunk_pages)
+        return
+    parser.error("Indicar un PDF local o implementar la selección de file-id en la siguiente etapa.")
 
 
 if __name__ == "__main__":
