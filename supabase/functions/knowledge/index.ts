@@ -38,6 +38,10 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json();
     const action = String(body.action || "");
+    const auth = req.headers.get("Authorization") || "";
+    if (!auth.startsWith("Bearer ")) throw new Error("UNAUTHORIZED");
+    const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE_KEY, Authorization: auth } });
+    if (!userRes.ok) throw new Error("UNAUTHORIZED");
 
     if (action === "searchConcepts") {
       const term = normalize(String(body.term || ""));
