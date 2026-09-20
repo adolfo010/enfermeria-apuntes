@@ -90,7 +90,10 @@ def google_access_token() -> str:
                     },
                     timeout=(30, 60),
                 )
-                refresh_res.raise_for_status()
+                if not refresh_res.ok:
+                    raise RuntimeError(
+                        f"Google OAuth refresh failed (HTTP {refresh_res.status}): {refresh_res.text[:2000]}"
+                    )
                 refreshed = refresh_res.json()
                 if not refreshed.get("access_token"):
                     raise RuntimeError("La renovación de Google no devolvió un access token.")
