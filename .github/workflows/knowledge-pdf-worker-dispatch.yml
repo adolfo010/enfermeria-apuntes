@@ -1,0 +1,52 @@
+name: Knowledge PDF Worker (desarrollo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker_ref:
+        description: "Rama del worker a ejecutar"
+        required: true
+        default: "architecture/knowledge-base-v1"
+        type: string
+      drive_file_id:
+        description: "ID del PDF en Google Drive"
+        required: true
+        type: string
+      chunk_pages:
+        description: "Páginas por bloque"
+        required: false
+        default: "3"
+        type: string
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Descargar rama del worker
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.worker_ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r workers/knowledge_pdf_worker/requirements.txt pytest
+
+      - name: Pruebas locales del worker
+        run: pytest -q workers/knowledge_pdf_worker/test_worker.py
+
+      - name: Procesar PDF desde Drive
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          KNOWLEDGE_USER_ID: ${{ secrets.KNOWLEDGE_USER_ID }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: |
+          python workers/knowledge_pdf_worker/worker.py \
+            --process \
+            --file-id "${{ inputs.drive_file_id }}" \
+            --chunk-pages "${{ inputs.chunk_pages }}"
