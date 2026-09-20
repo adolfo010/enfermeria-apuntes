@@ -326,6 +326,14 @@ def process_file(file_id: str, chunk_pages: int) -> None:
             print(f"Job ya completado: {job['id']}")
             return
 
+        existing_chunk_pages = int(job.get("chunk_pages") or chunk_pages)
+        if existing_chunk_pages != chunk_pages:
+            raise RuntimeError(
+                f"El job {job['id']} fue creado con chunk_pages={existing_chunk_pages}; "
+                f"reanudar con chunk_pages={chunk_pages} no es seguro. "
+                "Usá el mismo tamaño de bloque."
+            )
+
         update_job(job["id"], status="running", error_message=None)
         concepts = load_concepts()
         client = OpenAI(api_key=OPENAI_API_KEY)
