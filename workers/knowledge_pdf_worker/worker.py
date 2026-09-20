@@ -114,7 +114,7 @@ def normalize(value: str) -> str:
 
 
 def extract_chunk(client: OpenAI, chunk_path: Path, file_name: str, page_start: int, page_end: int) -> dict:
-    uploaded = client.files.create(file=chunk_path.open("rb"), purpose="user_data")
+    with chunk_path.open("rb") as chunk_file:\n        uploaded = client.files.create(file=chunk_file, purpose="user_data")
     try:
         prompt = (
             "Extraé el contenido académico de estas páginas para una base de conocimiento. "
