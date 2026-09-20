@@ -23,7 +23,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar dependencias
-        run: pip install -r workers/knowledge_pdf_worker/requirements.txt
+        run: pip install -r workers/knowledge_pdf_worker/requirements.txt pytest
+      - name: Pruebas locales del worker
+        run: pytest -q workers/knowledge_pdf_worker/test_worker.py
       - name: Procesar PDF desde Drive
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
