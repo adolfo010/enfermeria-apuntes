@@ -1,29 +1,79 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import tempfile
-
-import requests
 from pathlib import Path
 
+import requests
+from openai import OpenAI
 from pypdf import PdfReader, PdfWriter
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")
+DEFAULT_CHUNK_PAGES = 3
+
 
 def require_env() -> None:
-    missing = [n for n,v in (("SUPABASE_URL",SUPABASE_URL),("SUPABASE_SERVICE_ROLE_KEY",SUPABASE_SERVICE_ROLE_KEY),("GOOGLE_ACCESS_TOKEN",GOOGLE_ACCESS_TOKEN)) if not v]
-    if missing: raise SystemExit("Faltan secretos: " + ", ".join(missing))
+    missing = [
+        name for name, value in (
+            ("SUPABASE_URL", SUPABASE_URL),
+            ("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY),
+            ("GOOGLE_ACCESS_TOKEN", GOOGLE_ACCESS_TOKEN),
+            ("OPENAI_API_KEY", OPENAI_API_KEY),
+        ) if not value
+    ]
+    if missing:
+        raise SystemExit("Faltan secretos: " + ", ".join(missing))
+
+
+def supabase_request(path: str, method: str = "GET", body: object | None = None, headers: dict | None = None):
+    merged = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+    }
+    if headers:
+        merged.update(headers)
+    response = requests.request(
+        method,
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        headers=merged,
+        json=body,
+        timeout=(30, 120),
+    )
+    response.raise_for_status()
+    return response
+
+
+def drive_meta(file_id: str) -> dict:
+    response = requests.get(
+        f"https://www.googleapis.com/drive/v3/files/{file_id}",
+        params={"fields": "id,name,mimeType,size,modifiedTime,md5Checksum"},
+        headers={"Authorization": f"Bearer {GOOGLE_ACCESS_TOKEN}"},
+        timeout=(30, 60),
+    )
+    response.raise_for_status()
+    return response.json()
+
 
 def drive_download(file_id: str, destination: Path) -> None:
-    with requests.get(f"https://www.googleapis.com/drive/v3/files/{file_id}", params={"alt":"media"}, headers={"Authorization":f"Bearer {GOOGLE_ACCESS_TOKEN}"}, stream=True, timeout=(30,300)) as response:
+    with requests.get(
+        f"https://www.googleapis.com/drive/v3/files/{file_id}",
+        params={"alt": "media"},
+        headers={"Authorization": f"Bearer {GOOGLE_ACCESS_TOKEN}"},
+        stream=True,
+        timeout=(30, 600),
+    ) as response:
         response.raise_for_status()
         with destination.open("wb") as fh:
             for part in response.iter_content(chunk_size=1024 * 1024):
-                if part: fh.write(part)
-
+                if part:
+                    fh.write(part)
 
 
 def write_chunk(reader: PdfReader, start: int, end: int, output: Path) -> None:
@@ -34,52 +84,231 @@ def write_chunk(reader: PdfReader, start: int, end: int, output: Path) -> None:
         writer.write(fh)
 
 
-def inspect_pdf(pdf_path: Path, chunk_pages: int) -> None:
-    reader = PdfReader(str(pdf_path), strict=False)
-    total = len(reader.pages)
-    print(f"PDF: {pdf_path.name}")
-    print(f"Páginas: {total}")
-    print(f"Bloques de {chunk_pages}: {(total + chunk_pages - 1) // chunk_pages}")
+def content_hash(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-    with tempfile.TemporaryDirectory(prefix="knowledge-chunk-") as tmp:
-        tmpdir = Path(tmp)
-        start = 0
-        block = 0
-        while start < total:
-            end = min(start + chunk_pages, total)
-            chunk = tmpdir / f"chunk-{block:06d}.pdf"
-            write_chunk(reader, start, end, chunk)
-            print(f"bloque={block} paginas={start + 1}-{end} bytes={chunk.stat().st_size}")
-            chunk.unlink()
-            start = end
-            block += 1
+
+def normalize(value: str) -> str:
+    import unicodedata
+    value = unicodedata.normalize("NFD", str(value or ""))
+    value = "".join(ch for ch in value if unicodedata.category(ch) != "Mn")
+    return " ".join("".join(ch if ch.isalnum() or ch.isspace() else " " for ch in value.lower()).split())
+
+
+def extract_chunk(client: OpenAI, chunk_path: Path, file_name: str, page_start: int, page_end: int) -> dict:
+    uploaded = client.files.create(file=chunk_path.open("rb"), purpose="user_data")
+    try:
+        prompt = (
+            "Extraé el contenido académico de estas páginas para una base de conocimiento. "
+            "Conservá definiciones, explicaciones, relaciones, listas y datos relevantes. "
+            "NO resumas, NO agregues conocimiento externo y NO inventes contenido. "
+            "Devolvé exclusivamente JSON con pages; cada elemento debe tener page "
+            "(número de página original) y content (texto académico de esa página). "
+            f"Las páginas originales son {page_start}-{page_end}. "
+            "Si una página no contiene contenido académico recuperable, usá content vacío."
+        )
+        response = client.responses.create(
+            model=OPENAI_MODEL,
+            input=[{
+                "role": "user",
+                "content": [
+                    {"type": "input_file", "file_id": uploaded.id},
+                    {"type": "input_text", "text": prompt},
+                ],
+            }],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "page_extraction",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "pages": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "page": {"type": "integer"},
+                                        "content": {"type": "string"},
+                                    },
+                                    "required": ["page", "content"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["pages"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            max_output_tokens=9000,
+        )
+        import json
+        return json.loads(response.output_text or "{}")
+    finally:
+        try:
+            client.files.delete(uploaded.id)
+        except Exception:
+            pass
+
+
+def upsert_document(meta: dict) -> tuple[str, int]:
+    file_id = meta["id"]
+    fingerprint = (
+        f"md5:{meta['md5Checksum']}"
+        if meta.get("md5Checksum")
+        else f"meta:{meta.get('modifiedTime', '')}|{meta.get('size', '')}"
+    )
+    existing = supabase_request(
+        f"knowledge_documents?drive_file_id=eq.{file_id}&select=id,fingerprint,processing_status&page_count=eq.{int(meta.get('page_count', 0) or 0)}&limit=1"
+    ).json()
+    if existing and existing[0].get("fingerprint") == fingerprint and existing[0].get("processing_status") == "completed":
+        return existing[0]["id"], int(existing[0].get("page_count") or 0)
+
+    if existing:
+        document_id = existing[0]["id"]
+        supabase_request(f"knowledge_fragments?document_id=eq.{document_id}", "DELETE")
+        supabase_request(
+            f"knowledge_documents?id=eq.{document_id}",
+            "PATCH",
+            {"fingerprint": fingerprint, "processing_status": "running"},
+        )
+    else:
+        response = supabase_request(
+            "knowledge_documents",
+            "POST",
+            {
+                "drive_file_id": file_id,
+                "file_name": meta["name"],
+                "mime_type": meta.get("mimeType"),
+                "fingerprint": fingerprint,
+                "title": meta["name"],
+                "source_type": "google_drive",
+                "subject_area": "enfermeria",
+                "processing_status": "running",
+                "processing_version": "knowledge-v1-worker",
+            },
+            {"Prefer": "return=representation"},
+        )
+        document_id = response.json()[0]["id"]
+
+    return document_id, 0
+
+
+def load_concepts() -> list[dict]:
+    return supabase_request(
+        "knowledge_concepts?status=eq.active&select=id,name,normalized_name,concept_type&limit=5000"
+    ).json()
+
+
+def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int:
+    saved = 0
+    for page in pages:
+        content = str(page.get("content") or "").strip()
+        if not content:
+            continue
+        page_number = int(page["page"])
+        response = supabase_request(
+            "knowledge_fragments",
+            "POST",
+            {
+                "document_id": document_id,
+                "page_start": page_number,
+                "page_end": page_number,
+                "content": content,
+                "content_hash": content_hash(content),
+                "extraction_method": "openai_page_extraction_v1",
+            },
+            {"Prefer": "resolution=ignore-duplicates,return=representation"},
+        )
+        rows = response.json()
+        if not rows:
+            continue
+        fragment_id = rows[0]["id"]
+        normalized = normalize(content)
+        for concept in concepts:
+            name = normalize(concept.get("name", ""))
+            if len(name) >= 4 and name in normalized:
+                supabase_request(
+                    "knowledge_fragment_concepts",
+                    "POST",
+                    {
+                        "fragment_id": fragment_id,
+                        "concept_id": concept["id"],
+                        "relevance": 1,
+                        "evidence_type": "exact_term",
+                    },
+                    {"Prefer": "resolution=ignore-duplicates"},
+                )
+        saved += 1
+    return saved
+
+
+def process_file(file_id: str, chunk_pages: int) -> None:
+    require_env()
+    meta = drive_meta(file_id)
+    if meta.get("mimeType") != "application/pdf":
+        raise SystemExit(f"El archivo no es PDF: {meta.get('mimeType')}")
+
+    with tempfile.TemporaryDirectory(prefix="knowledge-source-") as tmp:
+        source = Path(tmp) / "source.pdf"
+        print(f"Descargando {meta['name']} ({meta.get('size', '?')} bytes) a disco...")
+        drive_download(file_id, source)
+
+        reader = PdfReader(str(source), strict=False)
+        total_pages = len(reader.pages)
+        meta["page_count"] = total_pages
+        print(f"Páginas detectadas: {total_pages}")
+
+        document_id, _ = upsert_document(meta)
+        concepts = load_concepts()
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        processed = 0
+        for start in range(0, total_pages, chunk_pages):
+            end = min(start + chunk_pages, total_pages)
+            chunk_path = Path(tmp) / f"chunk-{start + 1}-{end}.pdf"
+            write_chunk(reader, start, end, chunk_path)
+            try:
+                print(f"Procesando páginas {start + 1}-{end}...")
+                extracted = extract_chunk(client, chunk_path, meta["name"], start + 1, end)
+                saved = save_pages(document_id, extracted.get("pages", []), concepts)
+                processed += end - start
+                print(f"Bloque confirmado: páginas={start + 1}-{end}, fragmentos={saved}, avance={processed}/{total_pages}")
+            finally:
+                chunk_path.unlink(missing_ok=True)
+
+        supabase_request(
+            f"knowledge_documents?id=eq.{document_id}",
+            "PATCH",
+            {"page_count": total_pages, "processing_status": "completed"},
+        )
+        print(f"Documento completado: {document_id}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("pdf", type=Path, nargs="?")
     parser.add_argument("--file-id")
-    parser.add_argument("--chunk-pages", type=int, default=3)
-    parser.add_argument("--download-drive", action="store_true")
+    parser.add_argument("--pdf", type=Path)
+    parser.add_argument("--chunk-pages", type=int, default=DEFAULT_CHUNK_PAGES)
+    parser.add_argument("--process", action="store_true")
     args = parser.parse_args()
+
     if args.chunk_pages < 1 or args.chunk_pages > 10:
         raise SystemExit("chunk-pages debe estar entre 1 y 10")
-    if args.pdf and not args.pdf.is_file():
-        raise SystemExit(f"No existe: {args.pdf}")
-    
+
     if args.pdf:
-        inspect_pdf(args.pdf, args.chunk_pages)
+        reader = PdfReader(str(args.pdf), strict=False)
+        print(f"PDF: {args.pdf.name}")
+        print(f"Páginas: {len(reader.pages)}")
         return
-    if args.download_drive and args.file_id:
-        require_env()
-        with tempfile.TemporaryDirectory(prefix="knowledge-source-") as tmp:
-            pdf = Path(tmp) / "source.pdf"
-            print(f"Descargando Drive file {args.file_id} a disco temporal...")
-            drive_download(args.file_id, pdf)
-            print(f"Descarga finalizada: {pdf.stat().st_size} bytes")
-            inspect_pdf(pdf, args.chunk_pages)
+
+    if args.process and args.file_id:
+        process_file(args.file_id, args.chunk_pages)
         return
-    parser.error("Indicar un PDF local o usar --download-drive --file-id.")
+
+    parser.error("Usar --process --file-id FILE_ID para procesamiento completo.")
 
 
 if __name__ == "__main__":
