@@ -352,9 +352,19 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
             {"Prefer": "resolution=ignore-duplicates,return=representation"},
         )
         rows = response.json()
-        if not rows:
-            continue
-        fragment_id = rows[0]["id"]
+        if rows:
+            fragment_id = rows[0]["id"]
+        else:
+            existing = supabase_request(
+                "knowledge_fragments?document_id=eq." + document_id
+                + "&page_start=eq." + str(page_number)
+                + "&page_end=eq." + str(page_number)
+                + "&content_hash=eq." + content_hash(content)
+                + "&select=id&limit=1"
+            ).json()
+            if not existing:
+                continue
+            fragment_id = existing[0]["id"]
         normalized = normalize(content)
         for concept in concepts:
             name = normalize(concept.get("name", ""))
