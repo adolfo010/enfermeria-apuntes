@@ -18,6 +18,7 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")
+KNOWLEDGE_USER_ID = os.environ.get("KNOWLEDGE_USER_ID", "")
 DEFAULT_CHUNK_PAGES = 3
 
 
@@ -30,6 +31,7 @@ def require_env() -> None:
             ("GOOGLE_CLIENT_SECRET", GOOGLE_CLIENT_SECRET),
             ("GOOGLE_REFRESH_TOKEN", GOOGLE_REFRESH_TOKEN),
             ("OPENAI_API_KEY", OPENAI_API_KEY),
+            ("KNOWLEDGE_USER_ID", KNOWLEDGE_USER_ID),
         ) if not value
     ]
     if missing:
@@ -231,6 +233,7 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
             "POST",
             {
                 "document_id": document_id,
+            "user_id": KNOWLEDGE_USER_ID,
                 "page_start": page_number,
                 "page_end": page_number,
                 "content": content,
