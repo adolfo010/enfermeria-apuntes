@@ -16,6 +16,9 @@ GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")
 DEFAULT_CHUNK_PAGES = 3
@@ -62,6 +65,12 @@ def google_access_token() -> str:
         "refresh_token": GOOGLE_REFRESH_TOKEN,
         "grant_type": "refresh_token",
     }, timeout=(30, 60))
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
+def google_access_token() -> str:
+    response = requests.post("https://oauth2.googleapis.com/token", data={"client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET, "refresh_token": GOOGLE_REFRESH_TOKEN, "grant_type": "refresh_token"}, timeout=(30, 60))
     response.raise_for_status()
     return response.json()["access_token"]
 
@@ -290,8 +299,22 @@ def update_job(job_id: int, **fields) -> None:
     supabase_request(f"knowledge_ingest_jobs?id=eq.{job_id}", "PATCH", fields)
 
 
+def get_or_create_job(document_id: str, file_id: str, file_name: str, fingerprint: str, total_pages: int, chunk_pages: int) -> dict:
+    existing = supabase_request(f"knowledge_ingest_jobs?drive_file_id=eq.{file_id}&status=in.(pending,running,paused,error)&select=*&order=id.desc&limit=1").json()
+    if existing:
+        return existing[0]
+    total_chunks = (total_pages + chunk_pages - 1) // chunk_pages
+    return supabase_request("knowledge_ingest_jobs", "POST", {"document_id": document_id, "drive_file_id": file_id, "file_name": file_name, "file_fingerprint": fingerprint, "status": "running", "total_pages": total_pages, "chunk_pages": chunk_pages, "total_chunks": total_chunks, "next_chunk": 0, "processed_pages": 0, "processing_version": "knowledge-v1-worker"}, {"Prefer": "return=representation"}).json()[0]
+
+
+def update_job(job_id: int, **fields) -> None:
+    supabase_request(f"knowledge_ingest_jobs?id=eq.{job_id}", "PATCH", fields)
+
+
 def process_file(file_id: str, chunk_pages: int) -> None:
     require_env()
+    global GOOGLE_ACCESS_TOKEN
+    GOOGLE_ACCESS_TOKEN = google_access_token()
     global GOOGLE_ACCESS_TOKEN
     GOOGLE_ACCESS_TOKEN = google_access_token()
     meta = drive_meta(file_id)
