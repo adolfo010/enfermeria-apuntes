@@ -340,7 +340,7 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
         page_number = int(page["page"])
         page_hash = content_hash(content)
         existing = supabase_request(
-            "knowledge_fragments?document_id=eq." + document_id
+            "knowledge_fragments?document_id=eq." + str(document_id)
             + "&page_start=eq." + str(page_number)
             + "&page_end=eq." + str(page_number)
             + "&select=id,content_hash&limit=1"
