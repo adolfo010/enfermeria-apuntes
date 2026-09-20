@@ -79,6 +79,64 @@ Deno.serve(async (req) => {
       }));
     }
 
+    // Resolve a natural-language query into concepts, then expand one relation hop.
+    if (action === "retrieveByQuery") {
+      const query = normalize(String(body.query || ""));
+      if (!query) return cors(Response.json({ ok: true, concepts: [], fragments: [] }));
+
+      const tokens = [...new Set(query.split(" ").filter((token) => token.length >= 4))].slice(0, 8);
+      const searchTerms = [query, ...tokens].slice(0, 9);
+      const matched = new Map<number, { id: number; name: string; score: number }>();
+
+      for (const term of searchTerms) {
+        const encoded = encodeURIComponent(
+          `or=(normalized_name.ilike.*${term}*,name.ilike.*${term}*)&status=eq.active&order=name.asc&limit=30`,
+        );
+        const res = await rest(`knowledge_concepts?select=id,name&${encoded}`);
+        if (!res.ok) continue;
+        for (const concept of await res.json()) {
+          const id = Number(concept.id);
+          if (!id) continue;
+          const score = term === query ? 1 : 0.6;
+          const current = matched.get(id);
+          matched.set(id, { id, name: concept.name, score: Math.max(current?.score || 0, score) });
+        }
+      }
+
+      let conceptIds = [...matched.values()]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 12)
+        .map((c) => c.id);
+
+      if (conceptIds.length) {
+        const ids = conceptIds.join(",");
+        const relRes = await rest(
+          `knowledge_concept_relations?concept_id=in.(${ids})&select=concept_id,related_concept_id,relation_type,weight&limit=50`,
+        );
+        if (relRes.ok) {
+          const relations = await relRes.json();
+          conceptIds = [...new Set([
+            ...conceptIds,
+            ...relations.map((r: { related_concept_id: number }) => Number(r.related_concept_id)),
+          ])].filter(Boolean).slice(0, 20);
+        }
+      }
+
+      if (!conceptIds.length) return cors(Response.json({ ok: true, concepts: [], fragments: [] }));
+
+      const ids = conceptIds.join(",");
+      const rel = await rest(
+        `knowledge_fragment_concepts?concept_id=in.(${ids})&select=fragment_id,concept_id,relevance,evidence_type,knowledge_fragments(id,document_id,page_start,page_end,content,knowledge_documents(id,file_name,title,source_type,subject_area))&order=relevance.desc.nullslast&limit=100`,
+      );
+      if (!rel.ok) throw new Error(await rel.text());
+
+      return cors(Response.json({
+        ok: true,
+        concepts: [...matched.values()].sort((a, b) => b.score - a.score),
+        fragments: await rel.json(),
+      }));
+    }
+
     if (action === "retrieve") {
       const conceptIds = Array.isArray(body.conceptIds)
         ? body.conceptIds.map(Number).filter(Boolean).slice(0, 20)
