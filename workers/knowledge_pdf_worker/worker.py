@@ -310,38 +310,103 @@ def process_file(file_id: str, chunk_pages: int) -> None:
         print(f"Páginas detectadas: {total_pages}")
 
         document_id, _ = upsert_document(meta)
-        fingerprint = f"md5:{meta['md5Checksum']}" if meta.get("md5Checksum") else f"meta:{meta.get('modifiedTime', '')}|{meta.get('size', '')}"
-        job = get_or_create_job(document_id, file_id, meta["name"], fingerprint, total_pages, chunk_pages)
+        fingerprint = (
+            f"md5:{meta['md5Checksum']}"
+            if meta.get("md5Checksum")
+            else f"meta:{meta.get('modifiedTime', '')}|{meta.get('size', '')}"
+        )
+        job = get_or_create_job(
+            document_id, file_id, meta["name"], fingerprint, total_pages, chunk_pages
+        )
+
         if job["status"] == "completed":
             print(f"Job ya completado: {job['id']}")
             return
+
         update_job(job["id"], status="running", error_message=None)
         concepts = load_concepts()
         client = OpenAI(api_key=OPENAI_API_KEY)
 
         start_chunk = int(job.get("next_chunk") or 0)
         processed = int(job.get("processed_pages") or 0)
-        for chunk_index, start in enumerate(range(0, total_pages, chunk_pages)):
-            if chunk_index < start_chunk:
-                continue
-            end = min(start + chunk_pages, total_pages)
-            chunk_path = Path(tmp) / f"chunk-{start + 1}-{end}.pdf"
-            write_chunk(reader, start, end, chunk_path)
-            try:
-                print(f"Procesando páginas {start + 1}-{end}...")
-                extracted = extract_chunk(client, chunk_path, meta["name"], start + 1, end)
-                saved = save_pages(document_id, extracted.get("pages", []), concepts)
-                processed += end - start
-                next_chunk = chunk_index + 1
-                update_job(job["id"], status="completed" if next_chunk >= job["total_chunks"] else "running", next_chunk=next_chunk, processed_pages=processed, completed_at=None if next_chunk < job["total_chunks"] else "now()")
-                print(f"Bloque confirmado: páginas={start + 1}-{end}, fragmentos={saved}, avance={processed}/{total_pages}")
-            finally:
-                chunk_path.unlink(missing_ok=True)
 
-        supabase_request(f"knowledge_documents?id=eq.{document_id}", "PATCH", {"page_count": total_pages, "processing_status": "completed"})
-        update_job(job["id"], status="completed", next_chunk=job["total_chunks"], processed_pages=total_pages)
+        try:
+            for chunk_index, start in enumerate(range(0, total_pages, chunk_pages)):
+                if chunk_index < start_chunk:
+                    continue
 
-        print(f"Documento completado: {document_id}")
+                end = min(start + chunk_pages, total_pages)
+                chunk_path = Path(tmp) / f"chunk-{start + 1}-{end}.pdf"
+
+                try:
+                    write_chunk(reader, start, end, chunk_path)
+                    print(f"Procesando páginas {start + 1}-{end}...")
+                    extracted = extract_chunk(
+                        client, chunk_path, meta["name"], start + 1, end
+                    )
+                    saved = save_pages(
+                        document_id, extracted.get("pages", []), concepts
+                    )
+
+                    processed += end - start
+                    next_chunk = chunk_index + 1
+                    finished = next_chunk >= job["total_chunks"]
+
+                    update_job(
+                        job["id"],
+                        status="completed" if finished else "running",
+                        next_chunk=next_chunk,
+                        processed_pages=processed,
+                        completed_at=(
+                            __import__("datetime").datetime.now(
+                                __import__("datetime").timezone.utc
+                            ).isoformat()
+                            if finished
+                            else None
+                        ),
+                        error_message=None,
+                    )
+
+                    print(
+                        f"Bloque confirmado: páginas={start + 1}-{end}, "
+                        f"fragmentos={saved}, avance={processed}/{total_pages}"
+                    )
+                except Exception as exc:
+                    message = str(exc)[:2000]
+                    update_job(
+                        job["id"],
+                        status="error",
+                        error_message=message,
+                        next_chunk=chunk_index,
+                        processed_pages=processed,
+                    )
+                    raise
+                finally:
+                    chunk_path.unlink(missing_ok=True)
+
+            supabase_request(
+                f"knowledge_documents?id=eq.{document_id}",
+                "PATCH",
+                {
+                    "page_count": total_pages,
+                    "processing_status": "completed",
+                },
+            )
+            update_job(
+                job["id"],
+                status="completed",
+                next_chunk=job["total_chunks"],
+                processed_pages=total_pages,
+            )
+            print(f"Documento completado: {document_id}")
+
+        except Exception:
+            supabase_request(
+                f"knowledge_documents?id=eq.{document_id}",
+                "PATCH",
+                {"processing_status": "error"},
+            )
+            raise
 
 
 def main() -> None:
