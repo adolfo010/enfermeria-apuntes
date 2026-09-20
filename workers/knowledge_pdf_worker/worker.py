@@ -13,9 +13,6 @@ from pypdf import PdfReader, PdfWriter
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")
 KNOWLEDGE_USER_ID = os.environ.get("KNOWLEDGE_USER_ID", "")
@@ -27,9 +24,6 @@ def require_env() -> None:
         name for name, value in (
             ("SUPABASE_URL", SUPABASE_URL),
             ("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY),
-            ("GOOGLE_CLIENT_ID", GOOGLE_CLIENT_ID),
-            ("GOOGLE_CLIENT_SECRET", GOOGLE_CLIENT_SECRET),
-            ("GOOGLE_REFRESH_TOKEN", GOOGLE_REFRESH_TOKEN),
             ("OPENAI_API_KEY", OPENAI_API_KEY),
             ("KNOWLEDGE_USER_ID", KNOWLEDGE_USER_ID),
         ) if not value
@@ -58,14 +52,32 @@ def supabase_request(path: str, method: str = "GET", body: object | None = None,
 
 
 def google_access_token() -> str:
-    response = requests.post("https://oauth2.googleapis.com/token", data={
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
-        "refresh_token": GOOGLE_REFRESH_TOKEN,
-        "grant_type": "refresh_token",
-    }, timeout=(30, 60))
-    response.raise_for_status()
-    return response.json()["access_token"]
+    if GOOGLE_ACCESS_TOKEN:
+        return GOOGLE_ACCESS_TOKEN
+
+    rows = supabase_request(
+        "oauth_tokens?id=eq.rossana&select=access_token,expires_at&limit=1"
+    ).json()
+
+    if not rows or not rows[0].get("access_token"):
+        raise RuntimeError(
+            "No hay access token de Google disponible en oauth_tokens para rossana."
+        )
+
+    expires_at = rows[0].get("expires_at")
+    if expires_at:
+        try:
+            from datetime import datetime, timezone
+            expires = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            if expires <= datetime.now(timezone.utc):
+                raise RuntimeError(
+                    "El access token de Google está vencido. "
+                    "Para esta prueba debe renovarse desde el OAuth existente."
+                )
+        except ValueError:
+            pass
+
+    return rows[0]["access_token"]
 
 
 def drive_meta(file_id: str) -> dict:
