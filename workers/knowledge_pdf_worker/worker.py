@@ -286,6 +286,7 @@ def get_or_create_job(document_id: str, file_id: str, file_name: str, fingerprin
     total_chunks = (total_pages + chunk_pages - 1) // chunk_pages
     response = supabase_request(
         "knowledge_ingest_jobs", "POST", {
+            "user_id": KNOWLEDGE_USER_ID,
             "document_id": document_id,
             "drive_file_id": file_id,
             "file_name": file_name,
