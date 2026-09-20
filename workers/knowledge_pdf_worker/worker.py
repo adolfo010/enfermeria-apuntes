@@ -350,7 +350,7 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
             fragment_id = existing[0]["id"]
             if existing[0].get("content_hash") != page_hash:
                 supabase_request(
-                    "knowledge_fragments?id=eq." + fragment_id,
+                    "knowledge_fragments?id=eq." + str(fragment_id),
                     "PATCH",
                     {
                         "content": content,
@@ -359,7 +359,7 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
                     },
                 )
                 supabase_request(
-                    "knowledge_fragment_concepts?fragment_id=eq." + fragment_id,
+                    "knowledge_fragment_concepts?fragment_id=eq." + str(fragment_id),
                     "DELETE",
                 )
         else:
