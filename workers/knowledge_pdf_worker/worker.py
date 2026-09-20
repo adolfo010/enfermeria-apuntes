@@ -58,7 +58,9 @@ def inspect_pdf(pdf_path: Path, chunk_pages: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("pdf", type=Path, nargs="?")
+    parser.add_argument("--file-id")
     parser.add_argument("--chunk-pages", type=int, default=3)
+    parser.add_argument("--download-drive", action="store_true")
     args = parser.parse_args()
     if args.chunk_pages < 1 or args.chunk_pages > 10:
         raise SystemExit("chunk-pages debe estar entre 1 y 10")
@@ -68,7 +70,16 @@ def main() -> None:
     if args.pdf:
         inspect_pdf(args.pdf, args.chunk_pages)
         return
-    parser.error("Indicar un PDF local o implementar la selección de file-id en la siguiente etapa.")
+    if args.download_drive and args.file_id:
+        require_env()
+        with tempfile.TemporaryDirectory(prefix="knowledge-source-") as tmp:
+            pdf = Path(tmp) / "source.pdf"
+            print(f"Descargando Drive file {args.file_id} a disco temporal...")
+            drive_download(args.file_id, pdf)
+            print(f"Descarga finalizada: {pdf.stat().st_size} bytes")
+            inspect_pdf(pdf, args.chunk_pages)
+        return
+    parser.error("Indicar un PDF local o usar --download-drive --file-id.")
 
 
 if __name__ == "__main__":
