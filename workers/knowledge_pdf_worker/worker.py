@@ -13,6 +13,9 @@ from pypdf import PdfReader, PdfWriter
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")
 DEFAULT_CHUNK_PAGES = 3
@@ -23,7 +26,9 @@ def require_env() -> None:
         name for name, value in (
             ("SUPABASE_URL", SUPABASE_URL),
             ("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY),
-            ("GOOGLE_ACCESS_TOKEN", GOOGLE_ACCESS_TOKEN),
+            ("GOOGLE_CLIENT_ID", GOOGLE_CLIENT_ID),
+            ("GOOGLE_CLIENT_SECRET", GOOGLE_CLIENT_SECRET),
+            ("GOOGLE_REFRESH_TOKEN", GOOGLE_REFRESH_TOKEN),
             ("OPENAI_API_KEY", OPENAI_API_KEY),
         ) if not value
     ]
@@ -48,6 +53,17 @@ def supabase_request(path: str, method: str = "GET", body: object | None = None,
     )
     response.raise_for_status()
     return response
+
+
+def google_access_token() -> str:
+    response = requests.post("https://oauth2.googleapis.com/token", data={
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": GOOGLE_REFRESH_TOKEN,
+        "grant_type": "refresh_token",
+    }, timeout=(30, 60))
+    response.raise_for_status()
+    return response.json()["access_token"]
 
 
 def drive_meta(file_id: str) -> dict:
@@ -245,8 +261,39 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
     return saved
 
 
+def get_or_create_job(document_id: str, file_id: str, file_name: str, fingerprint: str, total_pages: int, chunk_pages: int) -> dict:
+    existing = supabase_request(
+        f"knowledge_ingest_jobs?drive_file_id=eq.{file_id}&status=in.(pending,running,paused,error)&select=*&order=id.desc&limit=1"
+    ).json()
+    if existing:
+        return existing[0]
+    total_chunks = (total_pages + chunk_pages - 1) // chunk_pages
+    response = supabase_request(
+        "knowledge_ingest_jobs", "POST", {
+            "document_id": document_id,
+            "drive_file_id": file_id,
+            "file_name": file_name,
+            "file_fingerprint": fingerprint,
+            "status": "running",
+            "total_pages": total_pages,
+            "chunk_pages": chunk_pages,
+            "total_chunks": total_chunks,
+            "next_chunk": 0,
+            "processed_pages": 0,
+            "processing_version": "knowledge-v1-worker",
+        }, {"Prefer": "return=representation"}
+    )
+    return response.json()[0]
+
+
+def update_job(job_id: int, **fields) -> None:
+    supabase_request(f"knowledge_ingest_jobs?id=eq.{job_id}", "PATCH", fields)
+
+
 def process_file(file_id: str, chunk_pages: int) -> None:
     require_env()
+    global GOOGLE_ACCESS_TOKEN
+    GOOGLE_ACCESS_TOKEN = google_access_token()
     meta = drive_meta(file_id)
     if meta.get("mimeType") != "application/pdf":
         raise SystemExit(f"El archivo no es PDF: {meta.get('mimeType')}")
@@ -262,11 +309,20 @@ def process_file(file_id: str, chunk_pages: int) -> None:
         print(f"Páginas detectadas: {total_pages}")
 
         document_id, _ = upsert_document(meta)
+        fingerprint = f"md5:{meta['md5Checksum']}" if meta.get("md5Checksum") else f"meta:{meta.get('modifiedTime', '')}|{meta.get('size', '')}"
+        job = get_or_create_job(document_id, file_id, meta["name"], fingerprint, total_pages, chunk_pages)
+        if job["status"] == "completed":
+            print(f"Job ya completado: {job['id']}")
+            return
+        update_job(job["id"], status="running", error_message=None)
         concepts = load_concepts()
         client = OpenAI(api_key=OPENAI_API_KEY)
 
-        processed = 0
-        for start in range(0, total_pages, chunk_pages):
+        start_chunk = int(job.get("next_chunk") or 0)
+        processed = int(job.get("processed_pages") or 0)
+        for chunk_index, start in enumerate(range(0, total_pages, chunk_pages)):
+            if chunk_index < start_chunk:
+                continue
             end = min(start + chunk_pages, total_pages)
             chunk_path = Path(tmp) / f"chunk-{start + 1}-{end}.pdf"
             write_chunk(reader, start, end, chunk_path)
@@ -275,15 +331,15 @@ def process_file(file_id: str, chunk_pages: int) -> None:
                 extracted = extract_chunk(client, chunk_path, meta["name"], start + 1, end)
                 saved = save_pages(document_id, extracted.get("pages", []), concepts)
                 processed += end - start
+                next_chunk = chunk_index + 1
+                update_job(job["id"], status="completed" if next_chunk >= job["total_chunks"] else "running", next_chunk=next_chunk, processed_pages=processed, completed_at=None if next_chunk < job["total_chunks"] else "now()")
                 print(f"Bloque confirmado: páginas={start + 1}-{end}, fragmentos={saved}, avance={processed}/{total_pages}")
             finally:
                 chunk_path.unlink(missing_ok=True)
 
-        supabase_request(
-            f"knowledge_documents?id=eq.{document_id}",
-            "PATCH",
-            {"page_count": total_pages, "processing_status": "completed"},
-        )
+        supabase_request(f"knowledge_documents?id=eq.{document_id}", "PATCH", {"page_count": total_pages, "processing_status": "completed"})
+        update_job(job["id"], status="completed", next_chunk=job["total_chunks"], processed_pages=total_pages)
+
         print(f"Documento completado: {document_id}")
 
 
