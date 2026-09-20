@@ -79,6 +79,9 @@ Deno.serve(async(req)=>{
     const docRes=await rest("knowledge_documents",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=representation"},body:JSON.stringify({drive_file_id:fileId,file_name:meta.name,mime_type:meta.mimeType,fingerprint:fp,page_count:pageCount,processing_status:"running",processing_version:"knowledge-v1"})});
     if(!docRes.ok) throw new Error(await docRes.text());
     const doc=(await docRes.json())[0];
+    const conceptsRes=await rest("knowledge_concepts?status=eq.active&select=id,name,normalized_name,concept_type&limit=5000");
+    if(!conceptsRes.ok) throw new Error(await conceptsRes.text());
+    const concepts=await conceptsRes.json();
     for(let start=1;start<=pageCount;start+=3){
       const end=Math.min(pageCount,start+2), chunk=await PDFDocument.create(), source=pdf;
       const pages=await source.copyPages(source,Array.from({length:end-start+1},(_,i)=>start-1+i));
@@ -86,8 +89,20 @@ Deno.serve(async(req)=>{
       const extracted=await extractChunk(await chunk.save(),meta.name,start,end);
       for(const p of extracted.pages||[]){
         const content=String(p.content||"").trim(); if(!content) continue;
-        const ins=await rest("knowledge_fragments",{method:"POST",body:JSON.stringify({document_id:doc.id,page_start:Number(p.page),page_end:Number(p.page),content,content_hash:hash(content),extraction_method:"openai_page_extraction_v1"})});
+        const ins=await rest("knowledge_fragments",{method:"POST",headers:{Prefer:"resolution=ignore-duplicates,return=representation"},body:JSON.stringify({document_id:doc.id,page_start:Number(p.page),page_end:Number(p.page),content,content_hash:hash(content),extraction_method:"openai_page_extraction_v1"})});
         if(!ins.ok) throw new Error(await ins.text());
+        const fragment=(await ins.json())?.[0];
+        if(!fragment) continue;
+        const normalizedContent=norm(content);
+        const matchedConcepts=concepts.filter((concept:any)=>{
+          const key=norm(concept.name||"");
+          return key.length>=4 && normalizedContent.includes(key);
+        }).slice(0,100);
+        for(const concept of matchedConcepts){
+          await rest("knowledge_fragment_concepts",{method:"POST",headers:{Prefer:"resolution=ignore-duplicates"},body:JSON.stringify({
+            fragment_id:fragment.id,concept_id:concept.id,relevance:1,evidence_type:"exact_term"
+          })});
+        }
       }
     }
     await rest(`knowledge_documents?id=eq.${doc.id}`,{method:"PATCH",body:JSON.stringify({processing_status:"completed",updated_at:new Date().toISOString()})});
