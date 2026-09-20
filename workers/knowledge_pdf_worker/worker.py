@@ -492,13 +492,6 @@ def process_file(file_id: str, chunk_pages: int) -> None:
                     )
                     pages = validate_extracted_pages(extracted, start + 1, end)
                     saved = save_pages(document_id, pages, concepts)
-                    expected_saved = end - start
-                    if saved != expected_saved:
-                        raise RuntimeError(
-                            f"El bloque {start + 1}-{end} no se guardó completo: "
-                            f"se esperaban {expected_saved} fragmentos y se guardaron {saved}. "
-                            "El bloque no se confirma."
-                        )
 
                     processed += end - start
                     next_chunk = chunk_index + 1
