@@ -3,25 +3,36 @@ name: Knowledge PDF Worker
 on:
   workflow_dispatch:
     inputs:
-      pdf_path:
-        description: 'Ruta local del PDF disponible en el runner'
+      drive_file_id:
+        description: "ID del PDF en Google Drive"
         required: true
         type: string
       chunk_pages:
-        description: 'Páginas por bloque'
+        description: "Páginas por bloque"
         required: false
-        default: '3'
+        default: "3"
         type: string
 
 jobs:
-  inspect:
+  process:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
       - name: Instalar dependencias
         run: pip install -r workers/knowledge_pdf_worker/requirements.txt
-      - name: Validar worker
-        run: python workers/knowledge_pdf_worker/worker.py "${{ inputs.pdf_path }}" --chunk-pages "${{ inputs.chunk_pages }}"
+      - name: Procesar PDF desde Drive
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GOOGLE_ACCESS_TOKEN: ${{ secrets.GOOGLE_ACCESS_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: |
+          python workers/knowledge_pdf_worker/worker.py \
+            --process \
+            --file-id "${{ inputs.drive_file_id }}" \
+            --chunk-pages "${{ inputs.chunk_pages }}"
