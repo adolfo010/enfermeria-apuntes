@@ -44,7 +44,7 @@ async function extractChunk(bytes: Uint8Array, fileName: string, pageStart: numb
     const rr=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:OPENAI_MODEL,input:[{role:"user",content:[{type:"input_file",file_id:fj.id},{type:"input_text",text:prompt}]}],text:{format:{type:"json_schema",name:"page_extraction",strict:true,schema:{type:"object",properties:{pages:{type:"array",items:{type:"object",properties:{page:{type:"integer"},content:{type:"string"}},required:["page","content"],additionalProperties:false}}},required:["pages"],additionalProperties:false}}},max_output_tokens:9000})});
     const j=await rr.json(); if(!rr.ok) throw new Error(j?.error?.message||"OPENAI_EXTRACTION_ERROR");
     return JSON.parse(String(j.output_text||"{}"));
-  } finally { await fetch(`https://api.openai.com/v1/files/${fj.id}`,{method:"DELETE",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`}).catch(()=>{}); }
+  } finally { await fetch(`https://api.openai.com/v1/files/${fj.id}`,{method:"DELETE",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`}}).catch(()=>{}); }
 }
 
 Deno.serve(async(req)=>{
