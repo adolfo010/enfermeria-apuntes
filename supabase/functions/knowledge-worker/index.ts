@@ -39,7 +39,8 @@ Deno.serve(async req => {
     }
     const chunk = Number(job.next_chunk);
     const total = Number(job.total_chunks || 0);
-    return Response.json({ok:true,claimed:true,job_id:job.id,chunk_index:chunk,total_chunks:total,status:"running",message:"Job claimed. Chunk processing is intentionally a separate step."});
+    if (body.dryRun === true) return Response.json({ok:true,claimed:true,job_id:job.id,chunk_index:chunk,total_chunks:total,status:"running",message:"Dry run: bloque reclamado, sin modificar progreso."});
+    return Response.json({ok:true,claimed:true,job_id:job.id,chunk_index:chunk,total_chunks:total,status:"running",message:"Bloque reclamado; la confirmación solo debe ejecutarse después de persistir sus fragmentos."});
   } catch (e) {
     return Response.json({error:String(e?.message||e)},{status:500});
   }
