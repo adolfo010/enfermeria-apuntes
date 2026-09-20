@@ -8,6 +8,8 @@ from pathlib import Path
 
 import requests
 from openai import OpenAI
+from google import genai
+from google.genai import types
 from pypdf import PdfReader, PdfWriter
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
@@ -15,19 +17,26 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "openai").lower()
 KNOWLEDGE_USER_ID = os.environ.get("KNOWLEDGE_USER_ID", "")
 DEFAULT_CHUNK_PAGES = 3
 
 
 def require_env() -> None:
-    missing = [
-        name for name, value in (
-            ("SUPABASE_URL", SUPABASE_URL),
-            ("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY),
-            ("OPENAI_API_KEY", OPENAI_API_KEY),
-            ("KNOWLEDGE_USER_ID", KNOWLEDGE_USER_ID),
-        ) if not value
+    required = [
+        ("SUPABASE_URL", SUPABASE_URL),
+        ("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY),
+        ("KNOWLEDGE_USER_ID", KNOWLEDGE_USER_ID),
     ]
+    if AI_PROVIDER == "gemini":
+        required.append(("GEMINI_API_KEY", GEMINI_API_KEY))
+    elif AI_PROVIDER == "openai":
+        required.append(("OPENAI_API_KEY", OPENAI_API_KEY))
+    else:
+        raise SystemExit(f"Proveedor de IA no soportado: {AI_PROVIDER}")
+    missing = [name for name, value in required if not value]
     if missing:
         raise SystemExit("Faltan secretos: " + ", ".join(missing))
 
@@ -125,63 +134,100 @@ def normalize(value: str) -> str:
     return " ".join("".join(ch if ch.isalnum() or ch.isspace() else " " for ch in value.lower()).split())
 
 
-def extract_chunk(client: OpenAI, chunk_path: Path, file_name: str, page_start: int, page_end: int) -> dict:
-    with chunk_path.open("rb") as chunk_file:
-        uploaded = client.files.create(file=chunk_file, purpose="user_data")
-    try:
-        prompt = (
-            "Extraé el contenido académico de estas páginas para una base de conocimiento. "
-            "Conservá definiciones, explicaciones, relaciones, listas y datos relevantes. "
-            "NO resumas, NO agregues conocimiento externo y NO inventes contenido. "
-            "Devolvé exclusivamente JSON con pages; cada elemento debe tener page "
-            "(número de página original) y content (texto académico de esa página). "
-            f"Las páginas originales son {page_start}-{page_end}. "
-            "Si una página no contiene contenido académico recuperable, usá content vacío."
-        )
-        response = client.responses.create(
-            model=OPENAI_MODEL,
-            input=[{
-                "role": "user",
-                "content": [
-                    {"type": "input_file", "file_id": uploaded.id},
-                    {"type": "input_text", "text": prompt},
-                ],
-            }],
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "page_extraction",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "pages": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "page": {"type": "integer"},
-                                        "content": {"type": "string"},
-                                    },
-                                    "required": ["page", "content"],
-                                    "additionalProperties": False,
-                                },
-                            },
-                        },
-                        "required": ["pages"],
-                        "additionalProperties": False,
+def extraction_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "pages": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "page": {"type": "integer"},
+                        "content": {"type": "string"},
                     },
-                }
+                    "required": ["page", "content"],
+                    "additionalProperties": False,
+                },
             },
-            max_output_tokens=9000,
-        )
-        import json
-        return json.loads(response.output_text or "{}")
-    finally:
+        },
+        "required": ["pages"],
+        "additionalProperties": False,
+    }
+
+
+def extraction_prompt(page_start: int, page_end: int) -> str:
+    return (
+        "Extraé el contenido académico de estas páginas para una base de conocimiento. "
+        "Conservá definiciones, explicaciones, relaciones, listas y datos relevantes. "
+        "NO resumas, NO agregues conocimiento externo y NO inventes contenido. "
+        "Devolvé exclusivamente JSON con pages; cada elemento debe tener page "
+        "(número de página original) y content (texto académico de esa página). "
+        f"Las páginas originales son {page_start}-{page_end}. "
+        f"Los valores permitidos para page son exactamente los números {page_start}-{page_end}, "
+        "uno por cada página del bloque. "
+        "Si una página no contiene contenido académico recuperable, usá content vacío."
+    )
+
+
+def extract_chunk(client, chunk_path: Path, file_name: str, page_start: int, page_end: int) -> dict:
+    prompt = extraction_prompt(page_start, page_end)
+    schema = extraction_schema()
+
+    if AI_PROVIDER == "openai":
+        with chunk_path.open("rb") as chunk_file:
+            uploaded = client.files.create(file=chunk_file, purpose="user_data")
         try:
-            client.files.delete(uploaded.id)
-        except Exception:
-            pass
+            response = client.responses.create(
+                model=OPENAI_MODEL,
+                input=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "input_file", "file_id": uploaded.id},
+                        {"type": "input_text", "text": prompt},
+                    ],
+                }],
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "page_extraction",
+                        "strict": True,
+                        "schema": schema,
+                    }
+                },
+                max_output_tokens=9000,
+            )
+            import json
+            return json.loads(response.output_text or "{}")
+        finally:
+            try:
+                client.files.delete(uploaded.id)
+            except Exception:
+                pass
+
+    if AI_PROVIDER == "gemini":
+        uploaded = client.files.upload(
+            file=chunk_path,
+            config={"mime_type": "application/pdf"},
+        )
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=[uploaded, prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                ),
+            )
+            import json
+            return json.loads(response.text or "{}")
+        finally:
+            try:
+                client.files.delete(name=uploaded.name)
+            except Exception:
+                pass
+
+    raise RuntimeError(f"Proveedor de IA no soportado: {AI_PROVIDER}")
 
 
 def upsert_document(meta: dict) -> tuple[str, int]:
@@ -250,7 +296,7 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
                 "page_end": page_number,
                 "content": content,
                 "content_hash": content_hash(content),
-                "extraction_method": "openai_page_extraction_v1",
+                "extraction_method": f"{AI_PROVIDER}_page_extraction_v1",
             },
             {"Prefer": "resolution=ignore-duplicates,return=representation"},
         )
@@ -361,7 +407,10 @@ def process_file(file_id: str, chunk_pages: int) -> None:
 
         update_job(job["id"], status="running", error_message=None)
         concepts = load_concepts()
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        if AI_PROVIDER == "gemini":
+            client = genai.Client(api_key=GEMINI_API_KEY)
+        else:
+            client = OpenAI(api_key=OPENAI_API_KEY)
 
         start_chunk = int(job.get("next_chunk") or 0)
         processed = int(job.get("processed_pages") or 0)
