@@ -44,6 +44,11 @@ async function requireAuthenticated(req: Request): Promise<void> {
   if (!userRes.ok) throw new Error("UNAUTHORIZED");
 }
 
+function requireServiceKey(req: Request): void {
+  const auth = req.headers.get("Authorization") ?? "";
+  if (auth !== `Bearer ${SERVICE_KEY}`) throw new Error("UNAUTHORIZED");
+}
+
 async function saveTokens(access_token: string, refresh_token: string | undefined, expires_in: number) {
   const expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
   const body: Record<string, unknown> = {
@@ -59,6 +64,36 @@ async function saveTokens(access_token: string, refresh_token: string | undefine
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error("No se pudo guardar el token: " + await res.text());
+}
+
+async function refreshGoogleToken(): Promise<{ access_token: string; expires_in: number }> {
+  const stored = await rest("oauth_tokens?id=eq.rossana&select=refresh_token&limit=1");
+  if (!stored.ok) throw new Error("No se pudo consultar el refresh token de Google.");
+  const rows = await stored.json();
+  const refresh_token = rows?.[0]?.refresh_token;
+  if (!refresh_token) throw new Error("No existe refresh token de Google. Hay que autorizar Drive nuevamente.");
+
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      refresh_token,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const tokenJson = await tokenRes.json();
+  if (!tokenRes.ok) {
+    throw new Error("Google rechazó la renovación del token: " + JSON.stringify(tokenJson));
+  }
+
+  await saveTokens(tokenJson.access_token, undefined, tokenJson.expires_in);
+  return {
+    access_token: tokenJson.access_token,
+    expires_in: tokenJson.expires_in,
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -102,6 +137,14 @@ Deno.serve(async (req: Request) => {
       if (!tokenRes.ok) return redirect(`${FRONTEND_URL}?auth=error&reason=${encodeURIComponent(JSON.stringify(tokenJson))}`);
       await saveTokens(tokenJson.access_token, tokenJson.refresh_token, tokenJson.expires_in);
       return redirect(`${FRONTEND_URL}?auth=ok`);
+    }
+
+    if (action === "refresh") {
+      requireServiceKey(req);
+      const refreshed = await refreshGoogleToken();
+      return new Response(JSON.stringify(refreshed), {
+        headers: corsHeaders({ "Content-Type": "application/json" }),
+      });
     }
 
     if (action === "status") {
