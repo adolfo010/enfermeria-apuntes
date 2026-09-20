@@ -80,10 +80,21 @@ def google_access_token() -> str:
             from datetime import datetime, timezone
             expires = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
             if expires <= datetime.now(timezone.utc):
-                raise RuntimeError(
-                    "El access token de Google está vencido. "
-                    "Para esta prueba debe renovarse desde el OAuth existente."
+                refresh_url = f"{SUPABASE_URL}/functions/v1/oauth/refresh"
+                refresh_res = requests.post(
+                    refresh_url,
+                    headers={
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                        "Content-Type": "application/json",
+                    },
+                    timeout=(30, 60),
                 )
+                refresh_res.raise_for_status()
+                refreshed = refresh_res.json()
+                if not refreshed.get("access_token"):
+                    raise RuntimeError("La renovación de Google no devolvió un access token.")
+                return refreshed["access_token"]
         except ValueError:
             pass
 
