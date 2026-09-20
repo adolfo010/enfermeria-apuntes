@@ -193,7 +193,8 @@ def upsert_document(meta: dict) -> tuple[str, int]:
 
     if existing:
         document_id = existing[0]["id"]
-        supabase_request(f"knowledge_fragments?document_id=eq.{document_id}", "DELETE")
+        if existing[0].get("fingerprint") != fingerprint:
+            supabase_request(f"knowledge_fragments?document_id=eq.{document_id}", "DELETE")
         supabase_request(
             f"knowledge_documents?id=eq.{document_id}",
             "PATCH",
