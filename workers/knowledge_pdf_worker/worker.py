@@ -338,33 +338,45 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
         if not content:
             continue
         page_number = int(page["page"])
-        response = supabase_request(
-            "knowledge_fragments",
-            "POST",
-            {
-                "document_id": document_id,
-                "page_start": page_number,
-                "page_end": page_number,
-                "content": content,
-                "content_hash": content_hash(content),
-                "extraction_method": f"{AI_PROVIDER}_page_extraction_v1",
-            },
-            {"Prefer": "resolution=ignore-duplicates,return=representation"},
-        )
-        rows = response.json()
-        if rows:
-            fragment_id = rows[0]["id"]
-        else:
-            existing = supabase_request(
-                "knowledge_fragments?document_id=eq." + document_id
-                + "&page_start=eq." + str(page_number)
-                + "&page_end=eq." + str(page_number)
-                + "&content_hash=eq." + content_hash(content)
-                + "&select=id&limit=1"
-            ).json()
-            if not existing:
-                continue
+        page_hash = content_hash(content)
+        existing = supabase_request(
+            "knowledge_fragments?document_id=eq." + document_id
+            + "&page_start=eq." + str(page_number)
+            + "&page_end=eq." + str(page_number)
+            + "&select=id,content_hash&limit=1"
+        ).json()
+
+        if existing:
             fragment_id = existing[0]["id"]
+            if existing[0].get("content_hash") != page_hash:
+                supabase_request(
+                    "knowledge_fragments?id=eq." + fragment_id,
+                    "PATCH",
+                    {
+                        "content": content,
+                        "content_hash": page_hash,
+                        "extraction_method": f"{AI_PROVIDER}_page_extraction_v1",
+                    },
+                )
+                supabase_request(
+                    "knowledge_fragment_concepts?fragment_id=eq." + fragment_id,
+                    "DELETE",
+                )
+        else:
+            response = supabase_request(
+                "knowledge_fragments",
+                "POST",
+                {
+                    "document_id": document_id,
+                    "page_start": page_number,
+                    "page_end": page_number,
+                    "content": content,
+                    "content_hash": page_hash,
+                    "extraction_method": f"{AI_PROVIDER}_page_extraction_v1",
+                },
+                {"Prefer": "return=representation"},
+            )
+            fragment_id = response.json()[0]["id"]
         normalized = normalize(content)
         for concept in concepts:
             name = normalize(concept.get("name", ""))
