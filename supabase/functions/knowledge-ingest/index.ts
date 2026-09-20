@@ -5,6 +5,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") ?? "gpt-5.6-luna";
+const MAX_SAFE_INGEST_BYTES = 80 * 1024 * 1024;
 
 function cors(r: Response) {
   r.headers.set("Access-Control-Allow-Origin", "*");
@@ -69,7 +70,11 @@ Deno.serve(async(req)=>{
     if(body.action!=="ingest") return cors(Response.json({error:"UNKNOWN_ACTION"},{status:400}));
     if(!OPENAI_API_KEY) throw new Error("OPENAI_NOT_CONFIGURED");
     const fileId=String(body.fileId||"").trim(); if(!fileId) return cors(Response.json({error:"Falta fileId"},{status:400}));
-    const token=await driveToken(), meta=await driveMeta(fileId,token), bytes=await driveBytes(fileId,token);
+    const token=await driveToken(), meta=await driveMeta(fileId,token);
+    const declaredSize=Number(meta.size||0);
+    if(declaredSize > MAX_SAFE_INGEST_BYTES) return cors(Response.json({ok:false,error:"LARGE_PDF_REQUIRES_ASYNC_PIPELINE",file_name:meta.name,size_bytes:declaredSize,limit_bytes:MAX_SAFE_INGEST_BYTES,message:"El documento supera el límite seguro del prototipo actual. No se descarga ni procesa para evitar consumir memoria de la Edge Function."},{status:413}));
+    const bytes=await driveBytes(fileId,token);
+    if(bytes.byteLength > MAX_SAFE_INGEST_BYTES) throw new Error("LARGE_PDF_REQUIRES_ASYNC_PIPELINE");
     const pdf=await PDFDocument.load(bytes,{ignoreEncryption:true}), pageCount=pdf.getPageCount();
     const fp=meta.md5Checksum?`md5:${meta.md5Checksum}`:`meta:${meta.modifiedTime||""}|${meta.size||""}`;
     const existingRes=await rest(`knowledge_documents?drive_file_id=eq.${encodeURIComponent(fileId)}&select=id,fingerprint,processing_status&limit=1`);
