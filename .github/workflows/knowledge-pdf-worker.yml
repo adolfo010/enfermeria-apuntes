@@ -1,0 +1,27 @@
+name: Knowledge PDF Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      pdf_path:
+        description: 'Ruta local del PDF disponible en el runner'
+        required: true
+        type: string
+      chunk_pages:
+        description: 'Páginas por bloque'
+        required: false
+        default: '3'
+        type: string
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar dependencias
+        run: pip install -r workers/knowledge_pdf_worker/requirements.txt
+      - name: Validar worker
+        run: python workers/knowledge_pdf_worker/worker.py "${{ inputs.pdf_path }}" --chunk-pages "${{ inputs.chunk_pages }}"
