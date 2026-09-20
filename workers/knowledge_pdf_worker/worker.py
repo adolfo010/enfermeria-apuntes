@@ -162,10 +162,12 @@ def extraction_schema() -> dict:
                         "content": {"type": "string"},
                     },
                     "required": ["page", "content"],
+                    "additionalProperties": False,
                 },
             },
         },
         "required": ["pages"],
+        "additionalProperties": False,
     }
 
 
