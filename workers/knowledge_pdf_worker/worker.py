@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import os
 import tempfile
+import time
 from pathlib import Path
 
 import requests
@@ -228,6 +229,58 @@ def extract_chunk(client, chunk_path: Path, file_name: str, page_start: int, pag
     raise RuntimeError(f"Proveedor de IA no soportado: {AI_PROVIDER}")
 
 
+def validate_extracted_pages(extracted: dict, page_start: int, page_end: int) -> list[dict]:
+    pages = extracted.get("pages") if isinstance(extracted, dict) else None
+    if not isinstance(pages, list):
+        raise RuntimeError("Gemini no devolvió una lista de páginas válida.")
+
+    expected = set(range(page_start, page_end + 1))
+    received = [int(page.get("page")) for page in pages if isinstance(page, dict) and page.get("page") is not None]
+    received_set = set(received)
+
+    if len(received) != len(received_set) or received_set != expected:
+        raise RuntimeError(
+            f"Extracción incompleta o inconsistente: se esperaban páginas {page_start}-{page_end}, "
+            f"pero se recibieron {received}. El bloque no se confirma."
+        )
+
+    for page in pages:
+        if not isinstance(page, dict) or "content" not in page:
+            raise RuntimeError("La extracción contiene una página sin campo content.")
+
+    return pages
+
+
+def is_transient_ai_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None) if response is not None else None
+    try:
+        return int(status) in {429, 500, 502, 503, 504}
+    except (TypeError, ValueError):
+        message = str(exc).lower()
+        return any(token in message for token in ("429", "500", "502", "503", "504", "unavailable", "resource exhausted"))
+
+
+def extract_chunk_with_retries(client, chunk_path: Path, file_name: str, page_start: int, page_end: int) -> dict:
+    max_attempts = 5
+    for attempt in range(1, max_attempts + 1):
+        try:
+            extracted = extract_chunk(client, chunk_path, file_name, page_start, page_end)
+            validate_extracted_pages(extracted, page_start, page_end)
+            return extracted
+        except Exception as exc:
+            if not is_transient_ai_error(exc) or attempt >= max_attempts:
+                raise
+            delay = min(60, 5 * (2 ** (attempt - 1)))
+            print(
+                f"Error transitorio de IA ({type(exc).__name__}): {exc}. "
+                f"Reintentando {attempt + 1}/{max_attempts} en {delay}s..."
+            )
+            time.sleep(delay)
+
+
 def upsert_document(meta: dict) -> tuple[str, int]:
     file_id = meta["id"]
     fingerprint = (
@@ -424,12 +477,18 @@ def process_file(file_id: str, chunk_pages: int) -> None:
                 try:
                     write_chunk(reader, start, end, chunk_path)
                     print(f"Procesando páginas {start + 1}-{end}...")
-                    extracted = extract_chunk(
+                    extracted = extract_chunk_with_retries(
                         client, chunk_path, meta["name"], start + 1, end
                     )
-                    saved = save_pages(
-                        document_id, extracted.get("pages", []), concepts
-                    )
+                    pages = validate_extracted_pages(extracted, start + 1, end)
+                    saved = save_pages(document_id, pages, concepts)
+                    expected_saved = end - start
+                    if saved != expected_saved:
+                        raise RuntimeError(
+                            f"El bloque {start + 1}-{end} no se guardó completo: "
+                            f"se esperaban {expected_saved} fragmentos y se guardaron {saved}. "
+                            "El bloque no se confirma."
+                        )
 
                     processed += end - start
                     next_chunk = chunk_index + 1
