@@ -17,6 +17,19 @@ async function rest(path: string, init: RequestInit = {}) {
     headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json", ...(init.headers || {}) },
   });
 }
+async function authenticatedUser(req: Request): Promise<string> {
+  const auth = req.headers.get("Authorization") || "";
+  if (!auth.startsWith("Bearer ")) throw new Error("UNAUTHORIZED");
+  const token = auth.slice(7).trim();
+  const r = await fetch(SUPABASE_URL + "/auth/v1/user", {
+    headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + token },
+  });
+  if (!r.ok) throw new Error("UNAUTHORIZED");
+  const user = await r.json();
+  if (!user?.id) throw new Error("UNAUTHORIZED");
+  return user.id;
+}
+
 async function driveToken(): Promise<string> {
   const r = await rest("oauth_tokens?id=eq.rossana&select=*");
   const rows = await r.json();
@@ -51,6 +64,7 @@ Deno.serve(async(req)=>{
   if(req.method==="OPTIONS") return cors(new Response("ok"));
   if(req.method!=="POST") return cors(new Response("Method not allowed",{status:405}));
   try{
+    await authenticatedUser(req);
     const body=await req.json();
     if(body.action!=="ingest") return cors(Response.json({error:"UNKNOWN_ACTION"},{status:400}));
     if(!OPENAI_API_KEY) throw new Error("OPENAI_NOT_CONFIGURED");
@@ -58,6 +72,10 @@ Deno.serve(async(req)=>{
     const token=await driveToken(), meta=await driveMeta(fileId,token), bytes=await driveBytes(fileId,token);
     const pdf=await PDFDocument.load(bytes,{ignoreEncryption:true}), pageCount=pdf.getPageCount();
     const fp=meta.md5Checksum?`md5:${meta.md5Checksum}`:`meta:${meta.modifiedTime||""}|${meta.size||""}`;
+    const existingRes=await rest(`knowledge_documents?drive_file_id=eq.${encodeURIComponent(fileId)}&select=id,fingerprint,processing_status&limit=1`);
+    const existing=(await existingRes.json())?.[0];
+    if(existing?.fingerprint===fp && existing.processing_status==="completed") return cors(Response.json({ok:true,reused:true,document_id:existing.id,file_name:meta.name,page_count:pageCount}));
+    if(existing?.id) await rest(`knowledge_fragments?document_id=eq.${existing.id}`,{method:"DELETE"});
     const docRes=await rest("knowledge_documents",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=representation"},body:JSON.stringify({drive_file_id:fileId,file_name:meta.name,mime_type:meta.mimeType,fingerprint:fp,page_count:pageCount,processing_status:"running",processing_version:"knowledge-v1"})});
     if(!docRes.ok) throw new Error(await docRes.text());
     const doc=(await docRes.json())[0];
