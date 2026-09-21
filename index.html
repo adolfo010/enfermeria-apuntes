@@ -1343,12 +1343,11 @@
   }
 
   function updateNavAvailability(){
-    var has = getSelectedFiles().length > 0;
+    // El flujo actual trabaja sobre la base de conocimiento, no sobre el selector
+    // de archivos del sistema heredado. La navegación se mantiene disponible.
     Array.prototype.forEach.call(document.querySelectorAll(".nav-item[data-section]"), function(btn){
-      if (btn.getAttribute("data-section") === "buscar") return;
-      btn.disabled = !has;
+      btn.disabled = false;
     });
-    if (!has && activeSection !== "buscar") setActiveSection("buscar");
   }
 
   function setActiveSection(name){
