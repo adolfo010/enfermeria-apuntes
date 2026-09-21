@@ -163,7 +163,7 @@
   #catalogBtn{font-family:var(--font-mono);font-size:12.5px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;}
   #catalogBtn:hover{color:var(--ink);border-color:var(--accent);}
   #catalogBtn:disabled{opacity:0.6;cursor:default;}
-  #catalogMsg{font-size:13px;}
+  #catalogMsg{font-size:13px;} .figures-import-modal{position:fixed;inset:0;background:rgba(26,20,23,.52);display:none;align-items:center;justify-content:center;padding:20px;z-index:1300}.figures-import-modal.open{display:flex}.figures-import-card{width:min(760px,100%);max-height:90vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px}.figures-import-log{margin-top:12px;max-height:260px;overflow:auto;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:10px;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap}
   .summarize-row{display:flex;gap:8px;margin-top:12px;}
   .summarize-row input{flex:1;min-width:0;font-family:var(--font-body);font-size:14.5px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
   .summary-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);}
@@ -253,6 +253,7 @@
   .ai-usage-note{margin-top:12px;color:var(--muted);font-size:12.5px;line-height:1.45;}
   @media (max-width:700px){.ai-usage-grid{grid-template-columns:1fr 1fr;}}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
 <div id="authScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);">
@@ -423,11 +424,12 @@
     </main>
   </div>
 
+<div class="figures-import-modal" id="figuresImportModal" aria-hidden="true"><div class="figures-import-card"><div style="display:flex;justify-content:space-between;gap:12px"><div><h2 style="margin:0 0 5px">Importar figuras anatómicas</h2><div class="muted">Carga el ZIP de integración de Nivel 2.6.</div></div><button type="button" class="small ghost" id="closeFiguresImportBtn">Cerrar</button></div><div style="margin-top:16px"><input type="file" id="figuresZipInput" accept=".zip"></div><div style="display:flex;gap:8px;align-items:center;margin-top:12px"><button type="button" id="startFiguresImportBtn">Iniciar importación</button><span id="figuresImportStatus" class="muted"></span></div><div class="progress-track"><div class="progress-fill" id="figuresImportProgress"></div></div><div id="figuresImportCounts" class="muted" style="margin-top:8px"></div><div id="figuresImportLog" class="figures-import-log"></div></div></div>
   <footer class="note">
     Enfermería Roxy · conectado directo a Google Drive.
     <div id="appVersion" style="font-family:var(--font-mono);font-size:12px;color:var(--muted);">Versión</div>
     <div>
-      <button type="button" id="catalogBtn">Actualizar catálogo de apuntes ↻</button>
+      <button type="button" id="catalogBtn">Actualizar catálogo de apuntes ↻</button> <button type="button" id="figuresImportBtn" style="display:none;">Importar figuras</button>
     </div>
     <div id="catalogMsg"></div>
   </footer>
@@ -2454,6 +2456,11 @@
     setTimeout(closeAccountModal,1200);
   });
 
+  function openFiguresImportModal(){var m=document.getElementById("figuresImportModal");m.classList.add("open");m.setAttribute("aria-hidden","false");document.getElementById("figuresImportLog").textContent="";}
+  function closeFiguresImportModal(){var m=document.getElementById("figuresImportModal");m.classList.remove("open");m.setAttribute("aria-hidden","true");}
+  function parseFiguresCsv(t){var a=[],r=[],c="",q=false;for(var i=0;i<t.length;i++){var x=t[i],n=t[i+1];if(x==='"'&&q&&n==='"'){c+='"';i++;continue}if(x==='"'){q=!q;continue}if(x===','&&!q){r.push(c);c='';continue}if((x==='\n'||x==='\r')&&!q){if(x==='\r'&&n==='\n')i++;if(c||r.length){r.push(c);a.push(r)}r=[];c='';continue}c+=x}if(c||r.length){r.push(c);a.push(r)}return a;}
+  async function importFiguresZip(){if(currentUserRole!=="ADMIN"){alert("Solo ADMIN puede importar figuras.");return}var f=document.getElementById("figuresZipInput").files[0];if(!f){alert("Seleccioná el ZIP.");return}var b=document.getElementById("startFiguresImportBtn"),l=document.getElementById("figuresImportLog"),s=document.getElementById("figuresImportStatus"),p=document.getElementById("figuresImportProgress"),ct=document.getElementById("figuresImportCounts");b.disabled=true;l.textContent="";try{var z=await JSZip.loadAsync(f),mf=z.file("figure_manifest.csv");if(!mf)throw Error("Falta figure_manifest.csv");var rr=parseFiguresCsv(await mf.async("text")),h=rr.shift()||[],ix={};h.forEach(function(x,i){ix[x]=i});if(ix.figure_id==null||ix.crop==null)throw Error("Manifest incompleto");var map=new Map();rr.forEach(function(r){if(r[ix.crop])map.set(r[ix.crop],r[ix.figure_id])});var imgs=Object.keys(z.files).filter(function(x){return x.indexOf("figures/")===0&&/\.(jpg|jpeg|png|webp)$/i.test(x)&&!z.files[x].dir});var ok=0,fail=0;for(var i=0;i<imgs.length;i++){var n=imgs[i],k=map.get(n);try{if(!k)throw Error("sin manifest");var bl=await z.files[n].async("blob"),e=((/\.([^.]+)$/.exec(n)||[])[1]||"jpg").toLowerCase(),mi=e==="png"?"image/png":e==="webp"?"image/webp":"image/jpeg",path="testut-tomo1/"+k+"."+e;var up=await supabaseClient.storage.from("knowledge-figures").upload(path,bl,{contentType:mi,upsert:true,cacheControl:"31536000"});if(up.error)throw up.error;var u=await supabaseClient.from("knowledge_figures").update({storage_path:path,updated_at:new Date().toISOString()}).eq("document_id",6).eq("figure_key",k);if(u.error)throw u.error;ok++;l.textContent+="✓ "+k+"\n"}catch(e2){fail++;l.textContent+="✗ "+(k||n)+" — "+e2.message+"\n"}p.style.width=Math.round((i+1)/imgs.length*100)+"%";s.textContent=(i+1)+"/"+imgs.length;l.scrollTop=l.scrollHeight}ct.innerHTML="<b>Finalizado:</b> "+ok+" cargadas · "+fail+" con error";}catch(e){s.textContent="Error";l.textContent="ERROR: "+e.message}b.disabled=false;}
+  document.getElementById("figuresImportBtn").addEventListener("click",openFiguresImportModal);document.getElementById("closeFiguresImportBtn").addEventListener("click",closeFiguresImportModal);document.getElementById("figuresImportModal").addEventListener("click",function(e){if(e.target===this)closeFiguresImportModal()});document.getElementById("startFiguresImportBtn").addEventListener("click",importFiguresZip);
   async function startAuthenticatedApp(session){
     if (!session || !session.access_token){ showLogin(); return; }
     if (__appStarted || __appStarting) return;
