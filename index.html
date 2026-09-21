@@ -1880,35 +1880,72 @@
       renderKnowledgeSelectionBar();
       return;
     }
-    html+='<div class="banner info" style="margin:6px 6px 10px;">El sistema buscó en toda la base de conocimiento. Seleccioná las secciones que necesitás; la bibliografía se conserva como fuente, pero no tenés que elegirla.</div>';
-    knowledgeLastGroups.forEach(function(g,gi){
-      var groupKey="kg"+gi;
-      html+='<div class="result-wrap" style="padding:8px 6px;">';
-      html+='<div style="display:flex;align-items:flex-start;gap:9px;padding:10px;background:var(--surface-2);border-radius:10px 10px 0 0;">';
-      html+='<input type="checkbox" class="knowledge-group-check" data-group="'+groupKey+'" style="margin-top:3px;width:16px;height:16px;accent-color:var(--accent);">';
-      html+='<div style="min-width:0;flex:1;"><div style="font-weight:600;">'+escapeHtml(g.title||"Sección")+'</div>';
-      html+='<div style="font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin-top:3px;">'+escapeHtml(g.route||"")+'</div>';
-      html+='</div><span class="index-badge">'+(g.fragments||[]).length+' fragmentos</span></div>';
-      (g.fragments||[]).forEach(function(f){
-        var checked=!!knowledgeSelectedIds[String(f.id)];
-        html+='<label class="result" style="cursor:pointer;border-radius:0;border-bottom:1px solid var(--line);">';
-        html+='<input type="checkbox" class="knowledge-fragment-check sel-check" data-id="'+escapeHtml(String(f.id))+'" data-group="'+groupKey+'" '+(checked?'checked':'')+'>';
-        html+='<div class="meta"><div class="rtitle">'+escapeHtml(f.title||"Fragmento")+'</div>';
-        html+='<div class="rsub">'+escapeHtml(f.fileName||f.documentTitle||"Fuente")+' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+f.pages)+'</div>';
-        html+='<div style="margin-top:5px;color:var(--muted);font-size:13px;line-height:1.4;">'+escapeHtml(f.preview||"")+'</div>';
-        html+='</div></label>';
+
+    html+='<div class="banner info" style="margin:6px 6px 10px;">El sistema buscó en toda la base de conocimiento. La bibliografía aparece como fuente de cada contenido; no es necesario elegirla previamente.</div>';
+
+    // Construimos un árbol a partir de las rutas almacenadas en los fragmentos.
+    var root={children:{},groups:[]};
+    knowledgeLastGroups.forEach(function(g){
+      var levels=(g.levels||[g.title||"Sección"]).filter(Boolean);
+      var node=root;
+      levels.forEach(function(level,li){
+        var key=String(level);
+        if(!node.children[key]) node.children[key]={label:key,children:{},groups:[],depth:li};
+        node=node.children[key];
       });
-      html+='</div>';
+      node.groups.push(g);
     });
+
+    function renderTree(node,path){
+      var keys=Object.keys(node.children);
+      keys.sort(function(a,b){return a.localeCompare(b,"es",{numeric:true,sensitivity:"base"});});
+      return keys.map(function(key,idx){
+        var child=node.children[key];
+        var childPath=path+"-"+idx;
+        var hasChildren=Object.keys(child.children).length>0;
+        var hasGroups=(child.groups||[]).length>0;
+        var body='';
+        if(hasChildren) body+=renderTree(child,childPath);
+        (child.groups||[]).forEach(function(g,gi){
+          var gid=childPath+"-g"+gi;
+          body+='<div class="knowledge-leaf" style="margin:4px 0 0 24px;border-left:2px solid var(--line);padding-left:10px;">';
+          body+='<div style="display:flex;align-items:center;gap:8px;">';
+          body+='<input type="checkbox" class="knowledge-group-check" data-group="'+escapeHtml(gid)+'" style="width:16px;height:16px;accent-color:var(--accent);">';
+          body+='<strong style="font-size:14px;">'+escapeHtml(g.title||"Sección")+'</strong>';
+          body+='<span class="index-badge">'+(g.fragments||[]).length+'</span></div>';
+          body+='<div style="font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin:3px 0 5px;">'+escapeHtml(g.route||"")+'</div>';
+          (g.fragments||[]).forEach(function(f){
+            var checked=!!knowledgeSelectedIds[String(f.id)];
+            body+='<label class="result" style="cursor:pointer;margin:3px 0;padding:8px 9px;">';
+            body+='<input type="checkbox" class="knowledge-fragment-check sel-check" data-id="'+escapeHtml(String(f.id))+'" data-group="'+escapeHtml(gid)+'" '+(checked?'checked':'')+'>';
+            body+='<div class="meta"><div class="rtitle">'+escapeHtml(f.title||"Fragmento")+'</div>';
+            body+='<div class="rsub">'+escapeHtml(f.fileName||f.documentTitle||"Fuente")+' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+f.pages)+'</div>';
+            body+='<div style="margin-top:4px;color:var(--muted);font-size:12.5px;line-height:1.4;">'+escapeHtml(f.preview||"")+'</div>';
+            body+='</div></label>';
+          });
+          body+='</div>';
+        });
+        var id="knowledge-node-"+childPath;
+        return '<details class="knowledge-node" '+(child.depth<2?'open':'')+' style="margin:5px 6px;">'+
+          '<summary style="cursor:pointer;padding:8px 10px;background:var(--surface-2);border-radius:9px;list-style-position:inside;">'+
+          '<span style="font-weight:650;">'+escapeHtml(child.label)+'</span>'+
+          (hasGroups?' <span class="index-badge">'+child.groups.length+' sección'+(child.groups.length===1?'':'es')+'</span>':'')+
+          '</summary><div style="margin-top:4px;">'+body+'</div></details>';
+      }).join('');
+    }
+
+    html+='<div class="knowledge-tree">'+renderTree(root,"n")+'</div>';
+    html+='<div class="muted" style="font-size:12px;margin:10px 6px;">Marcá una sección completa o fragmentos individuales. Podés combinar contenidos de diferentes libros.</div>';
     els.results.innerHTML=html;
+
     Array.prototype.forEach.call(els.results.querySelectorAll(".knowledge-fragment-check"),function(ch){
       ch.addEventListener("change",function(){
         var id=ch.getAttribute("data-id");
         if(ch.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
         renderKnowledgeSelectionBar();
-        if(ch.checked){ /* mantener el resto del listado visible */ }
       });
     });
+
     Array.prototype.forEach.call(els.results.querySelectorAll(".knowledge-group-check"),function(ch){
       ch.addEventListener("change",function(){
         var group=ch.getAttribute("data-group");
@@ -1922,7 +1959,6 @@
     });
     renderKnowledgeSelectionBar();
   }
-
   function generateKnowledgeOutput(mode){
     var selected=knowledgeSelectedList();
     if(!selected.length){ alert("Seleccioná al menos una sección."); return; }
