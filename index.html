@@ -1919,7 +1919,8 @@
         });
         var id="knowledge-node-"+childPath;
         return '<details class="knowledge-node" '+(child.depth<2?'open':'')+' style="margin:5px 6px;">'+
-          '<summary style="cursor:pointer;padding:8px 10px;background:var(--surface-2);border-radius:9px;list-style-position:inside;">'+
+          '<summary style="cursor:pointer;padding:8px 10px;background:var(--surface-2);border-radius:9px;list-style-position:inside;display:flex;align-items:center;gap:8px;">'+
+          '<input type="checkbox" class="knowledge-node-check" data-node="'+escapeHtml(childPath)+'" style="width:16px;height:16px;accent-color:var(--accent);">'+
           '<span style="font-weight:650;">'+escapeHtml(child.label)+'</span>'+
           (hasGroups?' <span class="index-badge">'+child.groups.length+' sección'+(child.groups.length===1?'':'es')+'</span>':'')+
           '</summary><div style="margin-top:4px;">'+body+'</div></details>';
@@ -1927,13 +1928,29 @@
     }
 
     html+='<div class="knowledge-tree">'+renderTree(root,"n")+'</div>';
-    html+='<div class="muted" style="font-size:12px;margin:10px 6px;">Marcá una sección completa o fragmentos individuales. Podés combinar contenidos de diferentes libros.</div>';
+    html+='<div class="muted" style="font-size:12px;margin:10px 6px;">Marcá la casilla de cualquier nivel para seleccionar toda la rama que depende de él. También podés seleccionar fragmentos individuales y combinar contenidos de diferentes libros.</div>';
     els.results.innerHTML=html;
 
     Array.prototype.forEach.call(els.results.querySelectorAll(".knowledge-fragment-check"),function(ch){
       ch.addEventListener("change",function(){
         var id=ch.getAttribute("data-id");
         if(ch.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
+        renderKnowledgeSelectionBar();
+      });
+    });
+
+    Array.prototype.forEach.call(els.results.querySelectorAll(".knowledge-node-check"),function(ch){
+      ch.addEventListener("click",function(e){ e.stopPropagation(); });
+      ch.addEventListener("change",function(){
+        var details=ch.closest("details");
+        if(!details) return;
+        Array.prototype.forEach.call(details.querySelectorAll(".knowledge-fragment-check"),function(f){
+          var id=f.getAttribute("data-id");
+          f.checked=ch.checked;
+          if(ch.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
+        });
+        Array.prototype.forEach.call(details.querySelectorAll(".knowledge-group-check"),function(g){ g.checked=ch.checked; });
+        Array.prototype.forEach.call(details.querySelectorAll(".knowledge-node-check"),function(n){ n.checked=ch.checked; });
         renderKnowledgeSelectionBar();
       });
     });
