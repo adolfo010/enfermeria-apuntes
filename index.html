@@ -2308,6 +2308,7 @@
     els.uploadBtn.style.display = admin ? "inline-block" : "none";
     els.inbox.style.display = admin ? "" : "none";
     els.catalogBtn.style.display = admin ? "inline-block" : "none";
+    document.getElementById("figuresImportBtn").style.display = admin ? "inline-block" : "none";
     document.getElementById("userBar").innerHTML =
       '<span class="pill ' + (admin ? 'good' : 'muted') + '">' +
       escapeHtml(email || "") + ' · ' + escapeHtml(currentUserRole) +
