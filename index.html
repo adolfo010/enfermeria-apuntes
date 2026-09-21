@@ -440,7 +440,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.27";
+  var APP_VERSION = "0.4.28";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1377,20 +1377,96 @@
       wrap.innerHTML='<div class="empty-state"><div class="big">▢</div>Seleccioná temas en Buscar para ver su contenido.</div>';
       return;
     }
+
     wrap.innerHTML=
       '<div class="panel" style="width:100%;min-height:72vh;max-height:78vh;overflow-y:auto;padding:28px 38px;">'+
       '<h2 style="font-size:20px;margin:0 0 20px;">Contenido de los temas seleccionados</h2>'+
-      selected.map(function(f){
-        return '<article style="padding:20px 0 28px;border-bottom:1px solid var(--border);font-size:16px;line-height:1.7;">'+
+      '<div id="knowledgePreviewContent">'+
+      selected.map(function(f,idx){
+        return '<article data-preview-fragment-id="'+escapeHtml(f.id)+'" style="padding:20px 0 28px;border-bottom:1px solid var(--border);font-size:16px;line-height:1.7;">'+
           '<h3 style="margin:0 0 7px;font-size:19px;">'+escapeHtml(f.title||"Fragmento")+'</h3>'+
           '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'+
           escapeHtml(f.fileName||f.documentTitle||"Fuente")+' · '+
           escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+(f.pages||"—"))+'</div>'+
           '<div style="white-space:pre-wrap;">'+escapeHtml(f.content||f.preview||"No hay contenido disponible para este fragmento.")+'</div>'+
+          '<div class="knowledge-preview-figures" data-figures-for="'+escapeHtml(f.id)+'" style="margin-top:18px;"></div>'+
         '</article>';
       }).join("")+
+      '</div>'+
       '</div>';
+
+    loadKnowledgePreviewFigures(selected);
   }
+
+  async function loadKnowledgePreviewFigures(selected){
+    if(!window.supabase || !supabaseClient || !selected || !selected.length) return;
+    var ids=selected.map(function(f){return Number(f.id);}).filter(function(id){return Number.isFinite(id);});
+    if(!ids.length) return;
+
+    var relRes=await supabaseClient
+      .from("knowledge_fragment_figures")
+      .select("fragment_id,figure_id,relation_type,weight")
+      .in("fragment_id",ids);
+
+    if(relRes.error || !relRes.data || !relRes.data.length) return;
+
+    var figureIds=[...new Set(relRes.data.map(function(r){return r.figure_id;}).filter(Boolean))];
+    if(!figureIds.length) return;
+
+    var figRes=await supabaseClient
+      .from("knowledge_figures")
+      .select("id,figure_key,figure_number,caption,pdf_page,printed_page,storage_path,status,reviewed")
+      .in("id",figureIds);
+
+    if(figRes.error || !figRes.data || !figRes.data.length) return;
+
+    var figsById={};
+    figRes.data.forEach(function(fig){figsById[String(fig.id)]=fig;});
+
+    var paths=figRes.data.map(function(fig){return fig.storage_path;}).filter(Boolean);
+    var signedMap={};
+    if(paths.length){
+      var signed=await supabaseClient.storage.from("knowledge-figures").createSignedUrls([...new Set(paths)],900);
+      if(!signed.error && signed.data){
+        signed.data.forEach(function(x){
+          if(x && x.path && x.signedUrl) signedMap[x.path]=x.signedUrl;
+        });
+      }
+    }
+
+    relRes.data.forEach(function(rel){
+      var fig=figsById[String(rel.figure_id)];
+      if(!fig) return;
+      var target=document.querySelector('.knowledge-preview-figures[data-figures-for="'+String(rel.fragment_id).replace(/"/g,'\\\"')+'"]');
+      if(!target) return;
+
+      var card=document.createElement("figure");
+      card.style.cssText="margin:18px 0 8px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);text-align:center;";
+
+      var url=signedMap[fig.storage_path];
+      if(url){
+        var img=document.createElement("img");
+        img.src=url;
+        img.alt=fig.caption || fig.figure_key || "Figura anatómica";
+        img.style.cssText="display:block;max-width:100%;max-height:620px;width:auto;height:auto;margin:0 auto;border-radius:6px;";
+        card.appendChild(img);
+      } else {
+        var noImg=document.createElement("div");
+        noImg.textContent="No se pudo cargar la imagen de esta figura.";
+        noImg.style.color="var(--muted)";
+        card.appendChild(noImg);
+      }
+
+      var caption=document.createElement("figcaption");
+      caption.style.cssText="margin-top:10px;font-size:13px;line-height:1.45;color:var(--muted);text-align:left;";
+      var label=fig.figure_number ? "Figura "+fig.figure_number : (fig.figure_key || "Figura");
+      var page=fig.printed_page || fig.pdf_page ? " · p. "+(fig.printed_page || fig.pdf_page) : "";
+      caption.textContent=label+(fig.caption ? " — "+fig.caption : "")+page;
+      card.appendChild(caption);
+      target.appendChild(card);
+    });
+  }
+
 
   function wireSummaryLevelLabels(){
     var levels=["Breve","Breve","Equilibrado","Detallado","Muy detallado"];
