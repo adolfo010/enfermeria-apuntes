@@ -1452,39 +1452,40 @@
   }
 
   function renderPreguntasSection(){
-    var body = document.getElementById("preguntasSectionBody");
-    var all = getSelectedFiles();
-    if (!all.length){ body.innerHTML = '<div class="empty-state">Seleccioná uno o más archivos en Buscar primero.</div>'; return; }
-    if (!Object.keys(preguntasPickedIds).some(function(id){ return preguntasPickedIds[id] && all.some(function(f){return f.id===id;}); })){
-      preguntasPickedIds = {}; all.forEach(function(f){ preguntasPickedIds[f.id] = true; });
+    var body=document.getElementById("preguntasSectionBody");
+    var selected=knowledgeSelectedList();
+    if(!selected.length){
+      body.innerHTML='<div class="empty-state">Seleccioná primero uno o más temas en Buscar.</div>';
+      return;
     }
-    var html = '<div class="panel" style="margin-bottom:14px;"><h2>Archivos</h2><div class="file-picker" id="preguntasPicker"></div></div>';
-    html += '<div class="summarize-row">' +
-      '<input type="text" id="preguntasInput" placeholder="Ej: ¿Cuáles son las partes de la neurona?">' +
-      '<button type="button" class="ghost" id="preguntasAskBtn">Preguntar ❓</button>' +
-    '</div>';
-    html += '<button type="button" class="ghost small" id="preguntasPeopleBtn" style="margin-top:8px;">Ver personas mencionadas 👤</button>';
-    html += '<div id="preguntasResult"></div>';
-    body.innerHTML = html;
-
-    var picker = document.getElementById("preguntasPicker");
-    picker.innerHTML = all.map(function(f){ return pickerRowHtml(f, "checkbox", "picker-preguntas", !!preguntasPickedIds[f.id]); }).join("");
-    Array.prototype.forEach.call(picker.querySelectorAll("input"), function(inp){
-      inp.addEventListener("change", function(){
-        var id = inp.getAttribute("data-id");
-        if (inp.checked) preguntasPickedIds[id] = true; else delete preguntasPickedIds[id];
-      });
-    });
-
+    body.innerHTML='<div class="panel" style="width:100%;min-height:65vh;padding:28px 34px;">'+
+      '<h2>Preguntar sobre los temas seleccionados</h2>'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;">La respuesta se elaborará exclusivamente a partir de los contenidos seleccionados.</div>'+
+      '<div style="padding:10px 0 16px;border-bottom:1px solid var(--border);">'+
+      selected.map(function(f){return '<div style="padding:6px 0;font-size:13px;"><strong>'+escapeHtml(f.title||"Fragmento")+'</strong> · '+escapeHtml(f.fileName||f.documentTitle||"Fuente")+' · '+escapeHtml(f.printedPages?"p. impresa "+f.printedPages:"p. "+(f.pages||"—"))+'</div>';}).join("")+
+      '</div>'+
+      '<div class="summarize-row" style="margin-top:18px;">'+
+      '<input type="text" id="knowledgeQuestionInput" placeholder="Escribí tu pregunta, por ejemplo: ¿Qué características presenta el hueso hioides?">'+
+      '<button type="button" id="knowledgeQuestionAskBtn">Preguntar ❓</button></div>'+
+      '<div id="knowledgeQuestionResult" style="margin-top:18px;"></div></div>';
     function ask(){
-      var chosen = all.filter(function(f){ return preguntasPickedIds[f.id]; });
-      askQuestion(chosen, document.getElementById("preguntasInput").value, document.getElementById("preguntasResult"));
+      var q=document.getElementById("knowledgeQuestionInput").value.trim();
+      if(!q){alert("Escribí una pregunta.");return;}
+      var btn=document.getElementById("knowledgeQuestionAskBtn");
+      btn.disabled=true; btn.textContent="Consultando…";
+      var result=document.getElementById("knowledgeQuestionResult");
+      result.innerHTML='<div class="banner info"><span class="spin"></span>&nbsp; Analizando los contenidos seleccionados…</div>';
+      callKnowledge({action:"ask",question:q,topic:knowledgeTopic,fragmentIds:selected.map(function(f){return Number(f.id);})})
+      .then(function(p){
+        var answer=p.answer||"";
+        if(!answer) throw new Error("La IA no devolvió una respuesta.");
+        result.innerHTML='<div class="panel" style="margin-top:14px;padding:20px;"><div class="preview-title">Respuesta</div><div style="white-space:pre-wrap;line-height:1.7;margin-top:12px;">'+escapeHtml(answer)+'</div><div style="margin-top:16px;font-size:12px;color:var(--muted);"><strong>Fuentes utilizadas</strong><br>'+selected.map(function(f){return '• '+escapeHtml((f.fileName||f.documentTitle||"Fuente")+" · "+(f.printedPages?"p. impresa "+f.printedPages:"p. "+(f.pages||"—")));}).join("<br>")+'</div></div>';
+      })
+      .catch(function(err){result.innerHTML='<div class="banner danger">'+escapeHtml(err.message||"Error")+'</div>';})
+      .finally(function(){btn.disabled=false;btn.textContent="Preguntar ❓";});
     }
-    document.getElementById("preguntasAskBtn").addEventListener("click", ask);
-    document.getElementById("preguntasInput").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); ask(); } });
-    document.getElementById("preguntasPeopleBtn").addEventListener("click", function(){
-      viewPeopleAcrossFiles(all.filter(function(f){ return preguntasPickedIds[f.id]; }));
-    });
+    document.getElementById("knowledgeQuestionAskBtn").addEventListener("click",ask);
+    document.getElementById("knowledgeQuestionInput").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();ask();}});
   }
 
 
