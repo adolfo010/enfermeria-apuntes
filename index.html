@@ -442,7 +442,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.23";
+  var APP_VERSION = "0.4.24";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1628,6 +1628,37 @@
     saveBlobFile(doc.output("blob"), safeDownloadName(chosen, topic) + ".pdf");
   }
 
+  function downloadKnowledgeQuestionsWord(qs, topic){
+    var title="Examen: "+(topic||"Tema");
+    var html='<!doctype html><html><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>body{font-family:Arial;margin:2cm;line-height:1.5;color:#222}h1{font-size:20pt}.q{margin:0 0 18px}.src{color:#666;font-size:9pt}</style></head><body><h1>'+escapeHtml(title)+'</h1>';
+    qs.forEach(function(q,i){
+      html+='<div class="q"><strong>Pregunta '+(i+1)+'</strong><p>'+escapeHtml(q.question||"")+'</p><ol>'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol><p><strong>Respuesta correcta:</strong> '+escapeHtml((q.options||[])[q.answer]||"")+'</p><div class="src">'+escapeHtml(q.source||"Fuente indicada por la IA")+'</div></div>';
+    });
+    html+='</body></html>';
+    saveBlobFile(new Blob(["\ufeff",html],{type:"application/msword"}),safeDownloadName([],topic)+"_examen.doc");
+  }
+
+  function downloadKnowledgeQuestionsPdf(qs, topic){
+    if(!window.jspdf || !window.jspdf.jsPDF){ alert("No se pudo cargar el generador de PDF. Recargá la página."); return; }
+    var JsPDF=window.jspdf.jsPDF, doc=new JsPDF({unit:"mm",format:"a4"});
+    var margin=18,w=210,h=297,y=20;
+    doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    doc.text(doc.splitTextToSize("Examen: "+(topic||"Tema"),w-margin*2),margin,y); y+=12;
+    qs.forEach(function(q,i){
+      doc.setFont("helvetica","bold"); doc.setFontSize(11);
+      var ql=doc.splitTextToSize("Pregunta "+(i+1)+": "+(q.question||""),w-margin*2);
+      ql.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=5;});
+      doc.setFont("helvetica","normal"); doc.setFontSize(10);
+      (q.options||[]).forEach(function(o,j){var ol=doc.splitTextToSize(String.fromCharCode(65+j)+") "+o,w-margin*2-4);ol.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin+4,y);y+=4.7;});});
+      var ans=doc.splitTextToSize("Respuesta: "+((q.options||[])[q.answer]||""),w-margin*2);
+      ans.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=4.7;});
+      var src=doc.splitTextToSize("Fuente: "+(q.source||"Fuente indicada por la IA"),w-margin*2);
+      doc.setFontSize(8); src.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=3.8;});
+      y+=5;
+    });
+    saveBlobFile(doc.output("blob"),safeDownloadName([],topic)+"_examen.pdf");
+  }
+
   function fallbackCopy(text){
     try {
       var ta = document.createElement("textarea");
@@ -1977,14 +2008,26 @@
             '<div id="summaryText" class="summary-scroll" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
             '<div class="summarize-row" style="margin-top:14px;flex-wrap:wrap;">'+
             '<button type="button" id="readKnowledgeSummaryBtn">Ver en pantalla completa ⛶</button>'+
-            '<button type="button" class="ghost" id="copyKnowledgeSummaryBtn">Copiar resumen 📋</button></div>'+
-            '<div id="knowledgeSources" style="margin-top:12px;font-size:13px;color:var(--muted);">Fuentes: '+escapeHtml([...new Set(selected.map(function(f){return f.fileName||f.documentTitle;}))].join(" · "))+'</div>';
+            '<button type="button" class="ghost" id="copyKnowledgeSummaryBtn">Copiar resumen 📋</button>'+
+            '<button type="button" class="ghost" id="downloadKnowledgePdfBtn">Descargar PDF</button>'+
+            '<button type="button" class="ghost" id="downloadKnowledgeWordBtn">Descargar Word</button></div>'+
+            '<div id="knowledgeSources" style="margin-top:12px;font-size:13px;color:var(--muted);">'+
+            '<strong>Fuentes utilizadas</strong><div style="margin-top:5px;">'+
+            selected.map(function(f){return '• '+escapeHtml((f.fileName||f.documentTitle||"Fuente")+' · '+(f.printedPages ? "p. impresa "+f.printedPages : "p. "+(f.pages||"—")));}).join("<br>")+
+            '</div></div>';
           document.getElementById("readKnowledgeSummaryBtn").addEventListener("click",function(){openReader("Resumen con IA",knowledgeTopic,summary);});
           document.getElementById("copyKnowledgeSummaryBtn").addEventListener("click",function(){copyToClipboard(summary);});
+          document.getElementById("downloadKnowledgePdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,selected.map(function(f){return {name:f.fileName||f.documentTitle||"Fuente"};}),knowledgeTopic);});
+          document.getElementById("downloadKnowledgeWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,selected.map(function(f){return {name:f.fileName||f.documentTitle||"Fuente"};}),knowledgeTopic);});
         }else{
           var qs=payload.questions||[];
-          els.preview.innerHTML='<div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+'</div>'+
+          els.preview.innerHTML='<div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+qs.length+' preguntas</div>'+
+            '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;">'+
+            '<button type="button" id="downloadKnowledgeExamPdfBtn">Descargar PDF</button>'+
+            '<button type="button" class="ghost" id="downloadKnowledgeExamWordBtn">Descargar Word</button></div>'+
             qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div><ol class="question-options">'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol><div class="question-answer"><strong>Respuesta correcta</strong>'+escapeHtml((q.options||[])[q.answer]||"")+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente indicada por la IA")+'</div></div></div>';}).join("");
+          document.getElementById("downloadKnowledgeExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,knowledgeTopic);});
+          document.getElementById("downloadKnowledgeExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,knowledgeTopic);});
         }
       })
       .catch(function(err){
