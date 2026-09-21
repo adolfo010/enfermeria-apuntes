@@ -1992,6 +1992,9 @@
   }
   function generateKnowledgeOutput(mode){
     var selected=knowledgeSelectedList();
+    // El flujo nuevo no depende de los archivos seleccionados del antiguo selector.
+    // Mostramos inmediatamente el resultado generado.
+    setActiveSection("preview");
     if(!selected.length){ alert("Seleccioná al menos un fragmento o una sección."); return; }
     var btn=document.getElementById(mode==="summary"?"knowledgeSummaryBtn":"knowledgeExamBtn");
     if(btn){btn.disabled=true;btn.textContent=mode==="summary"?"Generando resumen…":"Generando examen…";}
