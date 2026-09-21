@@ -1372,19 +1372,26 @@
   });
 
   function renderVistaPreviaSection(){
-    var files = getSelectedFiles();
+    // Flujo nuevo: la vista previa utiliza los fragmentos seleccionados
+    // en la búsqueda de conocimiento y no exige seleccionar un archivo.
     var pickerWrap = document.getElementById("previewPicker");
-    if (!files.length){
-      pickerWrap.innerHTML = "";
+    var selected = knowledgeSelectedList();
+    if (selected.length){
+      pickerWrap.innerHTML =
+        '<div class="panel"><h2>Temas seleccionados</h2>' +
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">' +
+        selected.map(function(f){
+          return '<div style="padding:7px 0;border-bottom:1px solid var(--border);"><strong>' +
+            escapeHtml(f.title || "Fragmento") + '</strong> · ' +
+            escapeHtml(f.fileName || f.documentTitle || "Fuente") + ' · p. ' +
+            escapeHtml(f.printedPages || f.pages || "—") + '</div>';
+        }).join("") +
+        '</div></div>';
       renderPreview(null);
       return;
     }
-    if (!previewPickedId || !files.some(function(f){ return f.id === previewPickedId; })) previewPickedId = files[0].id;
-    pickerWrap.innerHTML = files.map(function(f){ return pickerRowHtml(f, "radio", "picker-preview", f.id === previewPickedId); }).join("");
-    Array.prototype.forEach.call(pickerWrap.querySelectorAll("input"), function(inp){
-      inp.addEventListener("change", function(){ previewPickedId = inp.getAttribute("data-id"); renderVistaPreviaSection(); });
-    });
-    renderPreview(files.find(function(f){ return f.id === previewPickedId; }));
+    pickerWrap.innerHTML = "";
+    renderPreview(null);
   }
 
   function wireSummaryLevelLabels(){
