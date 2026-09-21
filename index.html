@@ -1415,92 +1415,42 @@
   }
 
   function renderResumenSection(){
-    var body = document.getElementById("resumenSectionBody");
-    var all = getSelectedFiles();
-    if (!all.length){ body.innerHTML = '<div class="empty-state">Seleccioná uno o más archivos en Buscar primero.</div>'; return; }
-    var indexed = all.filter(function(f){ var d = indexStatusCache[f.id]; return d && d.index; });
-    if (!indexed.length){ body.innerHTML = '<div class="banner warn">Ninguno de los archivos seleccionados tiene índice todavía. Volvé a Buscar y generá el índice antes de pedir un resumen.</div>'; return; }
-    if (!resumenPickedId || !indexed.some(function(f){ return f.id === resumenPickedId; })){ resumenPickedId = indexed[0].id; resumenSelectedTopic = ""; }
-    var notIndexedCount = all.length - indexed.length;
-    var html = "";
-    if (notIndexedCount > 0) html += '<div class="banner warn" style="margin-bottom:12px;">' + notIndexedCount + ' archivo(s) seleccionados no tienen índice y no aparecen acá.</div>';
-    html += '<div class="panel" style="margin-bottom:14px;"><h2>Elegí un archivo</h2><div class="file-picker" id="resumenPicker"></div></div>';
-    html += '<div class="panel" style="margin-bottom:14px;"><h2>Tema</h2><div class="index-topics" id="resumenTopics" style="max-height:240px;"></div></div>';
-    html += '<div class="summary-controls">' +
-      '<div class="summary-control"><label for="summaryLevel">Nivel de resumen <strong id="summaryLevelValue">3 — Equilibrado</strong></label><input type="range" id="summaryLevel" min="1" max="5" step="1" value="3"><div class="scale-label"><span>Breve</span><span>Muy detallado</span></div></div>' +
-      '<div class="summary-control"><label for="technicalLevel">Nivel de tecnicismo <strong id="technicalLevelValue">3 — Académico</strong></label><input type="range" id="technicalLevel" min="1" max="5" step="1" value="3"><div class="scale-label"><span>Introductorio</span><span>Profesional</span></div></div>' +
-    '</div>';
-    html += '<button type="button" id="resumenGenBtn" style="margin-top:12px;">Generar resumen con IA ✨</button>';
-    html += '<div id="resumenResult"></div>';
-    body.innerHTML = html;
-
-    var picker = document.getElementById("resumenPicker");
-    picker.innerHTML = indexed.map(function(f){ return pickerRowHtml(f, "radio", "picker-resumen", f.id === resumenPickedId); }).join("");
-    Array.prototype.forEach.call(picker.querySelectorAll("input"), function(inp){
-      inp.addEventListener("change", function(){ resumenPickedId = inp.getAttribute("data-id"); resumenSelectedTopic = ""; renderResumenSection(); });
-    });
-
-    var topicsWrap = document.getElementById("resumenTopics");
-    var idxData = indexStatusCache[resumenPickedId];
-    var topics = (idxData && idxData.index && idxData.index.topics) || [];
-    var topicsHtml = '<label class="index-topic"><input type="radio" name="picker-resumen-topic" value="" checked><span class="topic-name">Resumen general (todo el material)</span></label>';
-    topics.forEach(function(t){
-      var child = !!(t.parent && String(t.parent).trim());
-      topicsHtml += '<label class="index-topic' + (child?' child':'') + '"><input type="radio" name="picker-resumen-topic" value="' + escapeHtml(t.title||"") + '"><span class="topic-name">' + escapeHtml(t.title||"") + (child?' <span style="color:var(--muted);">· '+escapeHtml(t.parent)+'</span>':'') + '</span></label>';
-    });
-    topicsWrap.innerHTML = topicsHtml;
-    Array.prototype.forEach.call(topicsWrap.querySelectorAll("input"), function(inp){
-      if (inp.value === resumenSelectedTopic) inp.checked = true;
-      inp.addEventListener("change", function(){ resumenSelectedTopic = inp.value; });
-    });
-
-    wireSummaryLevelLabels();
-
-    document.getElementById("resumenGenBtn").addEventListener("click", function(){
-      var file = indexed.find(function(f){ return f.id === resumenPickedId; });
-      var sl = Number(document.getElementById("summaryLevel").value) || 3;
-      var tl = Number(document.getElementById("technicalLevel").value) || 3;
-      generateSummary([file], resumenSelectedTopic, document.getElementById("resumenResult"), sl, tl);
+    var body=document.getElementById("resumenSectionBody");
+    var selected=knowledgeSelectedList();
+    if(!selected.length){
+      body.innerHTML='<div class="empty-state">Seleccioná primero uno o más temas en Buscar.</div>';
+      return;
+    }
+    body.innerHTML='<div class="panel"><h2>Temas seleccionados</h2>'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">El resumen se generará exclusivamente con estos contenidos.</div>'+
+      selected.map(function(f){
+        return '<div style="padding:9px 0;border-bottom:1px solid var(--border);"><strong>'+escapeHtml(f.title||"Fragmento")+
+          '</strong><div style="font-size:12px;color:var(--muted);">'+escapeHtml(f.fileName||f.documentTitle||"Fuente")+
+          ' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+(f.pages||"—"))+'</div></div>';
+      }).join("")+
+      '<button type="button" id="knowledgeSummarySectionBtn" style="margin-top:14px;">Generar resumen con IA ✨</button></div>';
+    document.getElementById("knowledgeSummarySectionBtn").addEventListener("click",function(){
+      generateKnowledgeOutput("summary");
     });
   }
 
   function renderExamenSection(){
-    var body = document.getElementById("examenSectionBody");
-    var all = getSelectedFiles();
-    if (!all.length){ body.innerHTML = '<div class="empty-state">Seleccioná uno o más archivos en Buscar primero.</div>'; return; }
-    if (!Object.keys(examenPickedIds).some(function(id){ return examenPickedIds[id] && all.some(function(f){return f.id===id;}); })){
-      examenPickedIds = {}; all.forEach(function(f){ examenPickedIds[f.id] = true; });
+    var body=document.getElementById("examenSectionBody");
+    var selected=knowledgeSelectedList();
+    if(!selected.length){
+      body.innerHTML='<div class="empty-state">Seleccioná primero uno o más temas en Buscar.</div>';
+      return;
     }
-    var html = '<div class="panel" style="margin-bottom:14px;"><h2>Archivos</h2><div class="file-picker" id="examenPicker"></div></div>';
-    html += '<div class="summarize-row"><input type="text" id="examenTopic" placeholder="Tema puntual (opcional) — ej: huesos de la mano"></div>';
-    html += '<div id="examControls" class="exam-controls">' +
-      '<div><label for="examCount">Cantidad</label><select id="examCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>' +
-      '<div><label for="examType">Tipo</label><select id="examType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>' +
-      '<div><label for="examDifficulty">Dificultad</label><select id="examDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>' +
-      '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="examAnswers" checked> Mostrar respuestas y explicación</label>' +
-      '<button type="button" id="generateExamBtn" style="grid-column:1/-1;">Generar examen</button>' +
-    '</div>';
-    html += '<div id="examResult"></div>';
-    body.innerHTML = html;
-
-    var picker = document.getElementById("examenPicker");
-    picker.innerHTML = all.map(function(f){ return pickerRowHtml(f, "checkbox", "picker-examen", !!examenPickedIds[f.id]); }).join("");
-    Array.prototype.forEach.call(picker.querySelectorAll("input"), function(inp){
-      inp.addEventListener("change", function(){
-        var id = inp.getAttribute("data-id");
-        if (inp.checked) examenPickedIds[id] = true; else delete examenPickedIds[id];
-      });
-    });
-
-    document.getElementById("generateExamBtn").addEventListener("click", function(){
-      var chosen = all.filter(function(f){ return examenPickedIds[f.id]; });
-      if (!chosen.length){ alert("Elegí al menos un archivo."); return; }
-      var topic = document.getElementById("examenTopic").value.trim();
-      generateQuestions(chosen, topic, document.getElementById("examResult"),
-        Number(document.getElementById("examCount").value),
-        document.getElementById("examType").value,
-        Number(document.getElementById("examDifficulty").value),
-        document.getElementById("examAnswers").checked);
+    body.innerHTML='<div class="panel"><h2>Temas seleccionados para el examen</h2>'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Las preguntas se generarán exclusivamente a partir de estos contenidos.</div>'+
+      selected.map(function(f){
+        return '<div style="padding:9px 0;border-bottom:1px solid var(--border);"><strong>'+escapeHtml(f.title||"Fragmento")+
+          '</strong><div style="font-size:12px;color:var(--muted);">'+escapeHtml(f.fileName||f.documentTitle||"Fuente")+
+          ' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+(f.pages||"—"))+'</div></div>';
+      }).join("")+
+      '<button type="button" id="knowledgeExamSectionBtn" style="margin-top:14px;">Generar examen con IA 📝</button></div>';
+    document.getElementById("knowledgeExamSectionBtn").addEventListener("click",function(){
+      generateKnowledgeOutput("questions");
     });
   }
 
