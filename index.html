@@ -1863,6 +1863,23 @@
     });
   }
 
+  function hydrateKnowledgeFigureUrls(){
+    if(!window.supabase || !supabaseClient) return;
+    var imgs=Array.prototype.slice.call(els.results.querySelectorAll(".knowledge-figure-img[data-storage-path]"));
+    if(!imgs.length) return;
+    var paths=[...new Set(imgs.map(function(img){return img.getAttribute("data-storage-path");}).filter(Boolean))].slice(0,100);
+    if(!paths.length) return;
+    supabaseClient.storage.from("knowledge-figures").createSignedUrls(paths,900).then(function(res){
+      if(res.error || !res.data) return;
+      var map={};
+      res.data.forEach(function(x){ if(x && x.path && x.signedUrl) map[x.path]=x.signedUrl; });
+      imgs.forEach(function(img){
+        var url=map[img.getAttribute("data-storage-path")];
+        if(url){ img.src=url; img.style.display="block"; }
+      });
+    }).catch(function(){});
+  }
+
   function renderKnowledgeResults(groups){
     knowledgeLastGroups=groups||[];
     var html='';
@@ -1967,6 +1984,7 @@
       });
     });
     renderKnowledgeSelectionBar();
+    hydrateKnowledgeFigureUrls();
   }
   function generateKnowledgeOutput(mode){
     var selected=knowledgeSelectedList();
