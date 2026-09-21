@@ -258,7 +258,7 @@
 #springGreeting.open{display:flex}
 .spring-card{width:min(1100px,94vw);min-height:min(86vh,820px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:linear-gradient(180deg,#fffdf8 0%,#fff 100%);border:1px solid #f0d78a;border-radius:28px;box-shadow:0 20px 60px rgba(0,0,0,.25);padding:50px 40px 40px;position:relative;overflow:hidden}
 .spring-day-title{font-size:clamp(34px,5.5vw,64px);font-weight:700;color:#d19b00;margin:0 0 18px;text-shadow:0 2px 2px rgba(150,100,0,.12)}
-.spring-flower-scene{width:min(860px,92vw);height:clamp(190px,24vw,300px);display:block;margin:0 auto 8px;overflow:visible}
+.spring-flower-scene{width:min(860px,92vw);height:clamp(190px,24vw,300px);display:block;margin:0 auto 8px;overflow:visible}.spring-photo-layout{display:grid;grid-template-columns:minmax(230px,.7fr) minmax(360px,1.3fr);gap:28px;align-items:center;width:min(1020px,92vw);margin:8px auto 24px}.spring-flowers-left{display:flex;align-items:center;justify-content:center;min-height:320px}.spring-flowers-left .spring-flower-scene{width:100%;height:clamp(250px,30vw,380px);margin:0}.spring-photo-right{width:100%}.spring-photo-right img{display:block;width:100%;max-height:500px;object-fit:cover;border-radius:20px;border:2px solid #f0d78a;box-shadow:0 12px 32px rgba(0,0,0,.2)}@media(max-width:760px){.spring-photo-layout{grid-template-columns:1fr;gap:12px}.spring-flowers-left{min-height:190px}.spring-flowers-left .spring-flower-scene{height:200px}.spring-photo-right img{max-height:46vh}}
 .spring-flower-scene .petal{transform-box:fill-box;transform-origin:center;filter:url(#flowerShadow)}
 .spring-flower-scene .leaf{filter:url(#flowerShadow)}
 .spring-flower-scene .flower-center{filter:url(#centerShadow)}
@@ -268,19 +268,7 @@
 .spring-heart{font-size:clamp(80px,11vw,150px);line-height:1;margin:0 0 14px;animation:springHeart 1.5s ease-in-out infinite;filter:drop-shadow(0 10px 8px rgba(180,30,30,.18))}
 .spring-title{font-size:clamp(32px,5vw,58px);font-weight:700;color:#6b3a50;margin:0 0 20px}
 .spring-message{font-size:clamp(24px,3.2vw,38px);line-height:1.45;color:#40343a;margin:0 auto 34px;max-width:900px}
-.spring-close{background:#d5a900!important;color:#fff!important;border:none!important;padding:12px 30px!important;border-radius:999px!important;font-size:16px!important}
-@keyframes springHeart{0%,100%{transform:scale(1)}50%{transform:scale(1.10)}}
-@media(max-width:600px){.spring-card{padding:24px 14px 20px}.spring-flower-scene{width:100%;height:170px}.spring-heart{font-size:52px}.spring-title{font-size:24px}.spring-message{font-size:18px}}
-/* === FIN MENSAJE ESPECIAL DE PRIMAVERA === */
-</style>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-</head>
-<body>
-<!-- === MENSAJE ESPECIAL DE PRIMAVERA === -->
-<div id="springGreeting" role="dialog" aria-modal="true" aria-labelledby="springGreetingTitle">
-  <div class="spring-card">
-    <div class="spring-day-title">¡Feliz Día de la Primavera!</div>
-    <svg class="spring-flower-scene" viewBox="0 0 900 300" role="img" aria-label="Flores amarillas realistas" xmlns="http://www.w3.org/2000/svg">
+.spring-close{background:#d5a900!important;color:#fff!important;border:none!impo<div class="spring-photo-layout"><div class="spring-flowers-left"><svg class="spring-flower-scene" viewBox="0 0 900 300" role="img" aria-label="Flores amarillas realistas" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="sunPetal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff36a"/><stop offset=".38" stop-color="#ffd21a"/><stop offset="1" stop-color="#e89a00"/></linearGradient>
     <linearGradient id="sunPetalHi" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff9a8"/><stop offset=".45" stop-color="#ffd52a"/><stop offset="1" stop-color="#eda400"/></linearGradient>
@@ -361,6 +349,16 @@
       <ellipse class="petal" fill="url(#sunPetal)" cx="-8" cy="72" rx="20" ry="64" transform="rotate(168)"/>
       <ellipse class="petal" fill="url(#sunPetalHi)" cx="-40" cy="58" rx="20" ry="65" transform="rotate(192)"/>
       <ellipse class="petal" fill="url(#sunPetal)" cx="-61" cy="34" rx="20" ry="64" transform="rotate(216)"/>
+      <ellipse class="petal" fill="url(#sunPetalHi)" cx="-70" cy="2" rx="20" ry="63" transform="rotate(240)"/>
+      <ellipse class="petal" fill="url(#sunPetal)" cx="-62" cy="-31" rx="20" ry="65" transform="rotate(264)"/>
+      <ellipse class="petal" fill="url(#sunPetalHi)" cx="-45" cy="-57" rx="20" ry="65" transform="rotate(288)"/>
+      <ellipse class="petal" fill="url(#sunPetal)" cx="-20" cy="-73" rx="20" ry="65" transform="rotate(312)"/>
+      <circle class="flower-center" fill="url(#sunCenter)" cx="0" cy="0" r="45"/>
+      <circle cx="0" cy="0" r="38" fill="url(#seeds)" opacity=".9"/>
+      <circle cx="12" cy="-8" r="5" fill="#b87a08" opacity=".65"/><circle cx="-14" cy="10" r="4" fill="#d18b08" opacity=".6"/>
+    </g>
+  </g>
+</svg></div><div class="spring-photo-right"><img src="spring-escaba.jpg" alt="Fotografía de Escaba"></div></div>="rotate(216)"/>
       <ellipse class="petal" fill="url(#sunPetalHi)" cx="-70" cy="2" rx="20" ry="63" transform="rotate(240)"/>
       <ellipse class="petal" fill="url(#sunPetal)" cx="-62" cy="-31" rx="20" ry="65" transform="rotate(264)"/>
       <ellipse class="petal" fill="url(#sunPetalHi)" cx="-45" cy="-57" rx="20" ry="65" transform="rotate(288)"/>
