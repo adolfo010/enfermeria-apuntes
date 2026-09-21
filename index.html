@@ -734,7 +734,7 @@
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
-    showDownloadToast("Descarga iniciada: " + filename + " (revisá la carpeta de descargas de tu navegador)");
+    showDownloadToast("✓ Archivo preparado y descarga iniciada: " + filename + " · Revisá la carpeta de descargas de tu navegador.");
   }
 
   function downloadDriveFile(file){
