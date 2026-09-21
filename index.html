@@ -1430,14 +1430,22 @@
       body.innerHTML='<div class="empty-state">Seleccioná primero uno o más temas en Buscar.</div>';
       return;
     }
-    body.innerHTML='<div class="panel"><h2>Temas seleccionados para el examen</h2>'+
+    body.innerHTML='<div class="panel" style="width:100%;min-height:65vh;padding:28px 34px;">'+
+      '<h2>Temas seleccionados para el examen</h2>'+
       '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Las preguntas se generarán exclusivamente a partir de estos contenidos.</div>'+
       selected.map(function(f){
         return '<div style="padding:9px 0;border-bottom:1px solid var(--border);"><strong>'+escapeHtml(f.title||"Fragmento")+
           '</strong><div style="font-size:12px;color:var(--muted);">'+escapeHtml(f.fileName||f.documentTitle||"Fuente")+
           ' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+(f.pages||"—"))+'</div></div>';
       }).join("")+
-      '<button type="button" id="knowledgeExamSectionBtn" style="margin-top:14px;">Generar examen con IA 📝</button></div>';
+      '<div class="exam-controls" style="margin-top:20px;">'+
+        '<div><label for="knowledgeExamCount">Cantidad</label><select id="knowledgeExamCount"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></div>'+
+        '<div><label for="knowledgeExamType">Tipo</label><select id="knowledgeExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>'+
+        '<div><label for="knowledgeExamDifficulty">Dificultad</label><select id="knowledgeExamDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>'+
+        '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="knowledgeExamAnswers" checked> Mostrar respuestas y explicación</label>'+
+      '</div>'+
+      '<button type="button" id="knowledgeExamSectionBtn" style="margin-top:14px;">Generar examen con IA 📝</button>'+
+      '<div id="knowledgeExamResult" style="margin-top:18px;"></div></div>';
     document.getElementById("knowledgeExamSectionBtn").addEventListener("click",function(){
       generateKnowledgeOutput("questions");
     });
