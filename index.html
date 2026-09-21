@@ -1822,17 +1822,155 @@
     } catch (_e) { /* localStorage no disponible (modo privado, etc.) — sin sugerencias, sin romper la búsqueda */ }
   }
 
+  var knowledgeSelectedIds = {};
+  var knowledgeLastGroups = [];
+  var knowledgeTopic = "";
+
+  function callKnowledge(payload){
+    return fetch(SUPABASE_URL + "/functions/v1/knowledge", {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "apikey":ANON_KEY,
+        "Authorization":"Bearer " + (window.__supabaseSession ? window.__supabaseSession.access_token : ANON_KEY)
+      },
+      body:JSON.stringify(payload)
+    }).then(async function(r){
+      var j={}; try{ j=await r.json(); }catch(_e){}
+      if(!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      return j;
+    });
+  }
+
+  function knowledgeSelectedList(){
+    var out=[];
+    knowledgeLastGroups.forEach(function(g){
+      (g.fragments||[]).forEach(function(f){
+        if(knowledgeSelectedIds[String(f.id)]) out.push(f);
+      });
+    });
+    return out;
+  }
+
+  function renderKnowledgeSelectionBar(){
+    var wrap=document.getElementById("selectionSummary");
+    if(!wrap) return;
+    var n=knowledgeSelectedList().length;
+    if(!n){ wrap.innerHTML=""; return; }
+    wrap.innerHTML=
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;">'+
+      '<span class="count">' + n + (n===1?' sección seleccionada':' secciones seleccionadas') + '</span>'+
+      '<button type="button" id="knowledgeSummaryBtn">Generar resumen ✨</button>'+
+      '<button type="button" class="ghost" id="knowledgeExamBtn">Generar examen 📝</button>'+
+      '<button type="button" class="ghost small" id="knowledgeClearBtn">Deseleccionar</button>'+
+      '</div>';
+    document.getElementById("knowledgeSummaryBtn").addEventListener("click",function(){generateKnowledgeOutput("summary");});
+    document.getElementById("knowledgeExamBtn").addEventListener("click",function(){generateKnowledgeOutput("questions");});
+    document.getElementById("knowledgeClearBtn").addEventListener("click",function(){
+      knowledgeSelectedIds={}; renderKnowledgeResults(knowledgeLastGroups);
+    });
+  }
+
+  function renderKnowledgeResults(groups){
+    knowledgeLastGroups=groups||[];
+    var html='';
+    if(!knowledgeLastGroups.length){
+      html='<div class="empty-state"><div class="big">∅</div>No se encontraron secciones relacionadas con <strong>'+escapeHtml(knowledgeTopic)+'</strong>.</div>';
+      els.results.innerHTML=html;
+      renderKnowledgeSelectionBar();
+      return;
+    }
+    html+='<div class="banner info" style="margin:6px 6px 10px;">El sistema buscó en toda la base de conocimiento. Seleccioná las secciones que necesitás; la bibliografía se conserva como fuente, pero no tenés que elegirla.</div>';
+    knowledgeLastGroups.forEach(function(g,gi){
+      var groupKey="kg"+gi;
+      html+='<div class="result-wrap" style="padding:8px 6px;">';
+      html+='<div style="display:flex;align-items:flex-start;gap:9px;padding:10px;background:var(--surface-2);border-radius:10px 10px 0 0;">';
+      html+='<input type="checkbox" class="knowledge-group-check" data-group="'+groupKey+'" style="margin-top:3px;width:16px;height:16px;accent-color:var(--accent);">';
+      html+='<div style="min-width:0;flex:1;"><div style="font-weight:600;">'+escapeHtml(g.title||"Sección")+'</div>';
+      html+='<div style="font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin-top:3px;">'+escapeHtml(g.route||"")+'</div>';
+      html+='</div><span class="index-badge">'+(g.fragments||[]).length+' fragmentos</span></div>';
+      (g.fragments||[]).forEach(function(f){
+        var checked=!!knowledgeSelectedIds[String(f.id)];
+        html+='<label class="result" style="cursor:pointer;border-radius:0;border-bottom:1px solid var(--line);">';
+        html+='<input type="checkbox" class="knowledge-fragment-check sel-check" data-id="'+escapeHtml(String(f.id))+'" data-group="'+groupKey+'" '+(checked?'checked':'')+'>';
+        html+='<div class="meta"><div class="rtitle">'+escapeHtml(f.title||"Fragmento")+'</div>';
+        html+='<div class="rsub">'+escapeHtml(f.fileName||f.documentTitle||"Fuente")+' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+f.pages)+'</div>';
+        html+='<div style="margin-top:5px;color:var(--muted);font-size:13px;line-height:1.4;">'+escapeHtml(f.preview||"")+'</div>';
+        html+='</div></label>';
+      });
+      html+='</div>';
+    });
+    els.results.innerHTML=html;
+    Array.prototype.forEach.call(els.results.querySelectorAll(".knowledge-fragment-check"),function(ch){
+      ch.addEventListener("change",function(){
+        var id=ch.getAttribute("data-id");
+        if(ch.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
+        renderKnowledgeSelectionBar();
+        if(ch.checked){ /* mantener el resto del listado visible */ }
+      });
+    });
+    Array.prototype.forEach.call(els.results.querySelectorAll(".knowledge-group-check"),function(ch){
+      ch.addEventListener("change",function(){
+        var group=ch.getAttribute("data-group");
+        Array.prototype.forEach.call(els.results.querySelectorAll('.knowledge-fragment-check[data-group="'+group+'"]'),function(f){
+          var id=f.getAttribute("data-id");
+          f.checked=ch.checked;
+          if(ch.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
+        });
+        renderKnowledgeSelectionBar();
+      });
+    });
+    renderKnowledgeSelectionBar();
+  }
+
+  function generateKnowledgeOutput(mode){
+    var selected=knowledgeSelectedList();
+    if(!selected.length){ alert("Seleccioná al menos una sección."); return; }
+    var btn=document.getElementById(mode==="summary"?"knowledgeSummaryBtn":"knowledgeExamBtn");
+    if(btn){btn.disabled=true;btn.textContent=mode==="summary"?"Generando resumen…":"Generando examen…";}
+    els.preview.innerHTML='<div class="preview-title">'+(mode==="summary"?"Resumen con IA":"Examen generado con IA")+'</div>'+
+      '<div class="preview-path">'+escapeHtml(knowledgeTopic)+" · "+selected.length+" secciones seleccionadas"+'</div>'+
+      '<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Trabajando exclusivamente con las secciones seleccionadas…</div>';
+    callKnowledge({action:"generate",mode:mode,topic:knowledgeTopic,fragmentIds:selected.map(function(f){return Number(f.id);})})
+      .then(function(payload){
+        if(mode==="summary"){
+          var summary=payload.summary||"";
+          if(!summary) throw new Error("La IA no devolvió un resumen.");
+          els.preview.innerHTML='<div class="preview-title">Resumen con IA</div>'+
+            '<div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+selected.length+' secciones</div>'+
+            '<div id="summaryText" class="summary-scroll" style="white-space:pre-wrap;line-height:1.6;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
+            '<div class="summarize-row" style="margin-top:14px;flex-wrap:wrap;">'+
+            '<button type="button" id="readKnowledgeSummaryBtn">Ver en pantalla completa ⛶</button>'+
+            '<button type="button" class="ghost" id="copyKnowledgeSummaryBtn">Copiar resumen 📋</button></div>'+
+            '<div id="knowledgeSources" style="margin-top:12px;font-size:13px;color:var(--muted);">Fuentes: '+escapeHtml([...new Set(selected.map(function(f){return f.fileName||f.documentTitle;}))].join(" · "))+'</div>';
+          document.getElementById("readKnowledgeSummaryBtn").addEventListener("click",function(){openReader("Resumen con IA",knowledgeTopic,summary);});
+          document.getElementById("copyKnowledgeSummaryBtn").addEventListener("click",function(){copyToClipboard(summary);});
+        }else{
+          var qs=payload.questions||[];
+          els.preview.innerHTML='<div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+'</div>'+
+            qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div><ol class="question-options">'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol><div class="question-answer"><strong>Respuesta correcta</strong>'+escapeHtml((q.options||[])[q.answer]||"")+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente indicada por la IA")+'</div></div></div>';}).join("");
+        }
+      })
+      .catch(function(err){
+        els.preview.innerHTML='<div class="preview-title">No se pudo generar el contenido</div><div class="banner danger" style="margin-top:10px;">'+escapeHtml(err.message||"Error")+'</div>';
+      })
+      .finally(function(){
+        renderKnowledgeSelectionBar();
+      });
+  }
+
   function runSearch(term){
     term = term.trim();
     if (!term) return;
     saveRecentSearch(term);
-    selectedIds = {};
-    renderSelectionSummary();
-    els.results.innerHTML = '<div class="empty-state"><span class="spin"></span>&nbsp; Buscando…</div>';
-    callDrive({ action: "search", term: term })
-      .then(function(payload){ lastSearchResults = sortFilesBy(payload.files || [], resultsSortMode); renderResults(lastSearchResults); })
+    knowledgeTopic=term;
+    knowledgeSelectedIds={};
+    renderKnowledgeSelectionBar();
+    els.results.innerHTML='<div class="empty-state"><span class="spin"></span>&nbsp; Buscando en toda la base de conocimiento…</div>';
+    callKnowledge({action:"search",term:term})
+      .then(function(payload){ renderKnowledgeResults(payload.groups||[]); })
       .catch(function(err){
-        els.results.innerHTML = '<div class="banner danger">No se pudo buscar (' + escapeHtml(err.message) + ').</div>';
+        els.results.innerHTML='<div class="banner danger">No se pudo buscar en la base de conocimiento ('+escapeHtml(err.message)+').</div>';
       });
   }
   els.catalogBtn.addEventListener("click", function(){
