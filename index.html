@@ -1999,7 +1999,7 @@
     var btn=document.getElementById(mode==="summary"?"knowledgeSummaryBtn":"knowledgeExamBtn");
     if(btn){btn.disabled=true;btn.textContent=mode==="summary"?"Generando resumen…":"Generando examen…";}
     els.preview.innerHTML='<div class="preview-title">'+(mode==="summary"?"Resumen con IA":"Examen generado con IA")+'</div>'+
-      '<div class="preview-path">'+escapeHtml(knowledgeTopic)+" · "+selected.length+" secciones seleccionadas"+'</div>'+
+      '<div class="preview-path">'+escapeHtml(knowledgeTopic)+" · "+selected.length+" fragmentos seleccionadas"+'</div>'+
       '<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Trabajando exclusivamente con las secciones seleccionadas…</div>';
     callKnowledge({action:"generate",mode:mode,topic:knowledgeTopic,fragmentIds:selected.map(function(f){return Number(f.id);})})
       .then(function(payload){
