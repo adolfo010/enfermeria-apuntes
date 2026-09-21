@@ -252,10 +252,35 @@
   .ai-usage-table tr:last-child td{border-bottom:none;}
   .ai-usage-note{margin-top:12px;color:var(--muted);font-size:12.5px;line-height:1.45;}
   @media (max-width:700px){.ai-usage-grid{grid-template-columns:1fr 1fr;}}
+
+/* === MENSAJE ESPECIAL DE PRIMAVERA === */
+#springGreeting{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(35,24,29,.62);backdrop-filter:blur(4px)}
+#springGreeting.open{display:flex}
+.spring-card{width:min(620px,100%);text-align:center;background:linear-gradient(180deg,#fffdf8 0%,#fff 100%);border:1px solid #f0d78a;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.25);padding:34px 28px 28px;position:relative;overflow:hidden}
+.spring-flowers{font-size:76px;line-height:1.05;letter-spacing:8px;margin-bottom:10px;filter:drop-shadow(0 5px 5px rgba(180,130,0,.16))}
+.spring-heart{font-size:64px;line-height:1;margin:4px 0 12px;animation:springHeart 1.5s ease-in-out infinite}
+.spring-title{font-size:29px;font-weight:700;color:#6b3a50;margin:0 0 12px}
+.spring-message{font-size:21px;line-height:1.5;color:#40343a;margin:0 auto 24px;max-width:500px}
+.spring-close{background:#d5a900!important;color:#fff!important;border:none!important;padding:12px 30px!important;border-radius:999px!important;font-size:16px!important}
+@keyframes springHeart{0%,100%{transform:scale(1)}50%{transform:scale(1.10)}}
+@media(max-width:600px){.spring-card{padding:28px 20px 22px}.spring-flowers{font-size:56px}.spring-heart{font-size:52px}.spring-title{font-size:24px}.spring-message{font-size:18px}}
+/* === FIN MENSAJE ESPECIAL DE PRIMAVERA === */
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
+<!-- === MENSAJE ESPECIAL DE PRIMAVERA === -->
+<div id="springGreeting" role="dialog" aria-modal="true" aria-labelledby="springGreetingTitle">
+  <div class="spring-card">
+    <div class="spring-flowers" aria-hidden="true">🌻 🌼 🌻</div>
+    <div class="spring-heart" aria-hidden="true">❤️</div>
+    <h2 id="springGreetingTitle" class="spring-title">¡Acá tienes tus flores amarillas!</h2>
+    <p class="spring-message">Te Amo ❤️<br>Tu puedes con la carrera, ¡Vamos!!!</p>
+    <button type="button" class="spring-close" id="springGreetingClose">Cerrar</button>
+  </div>
+</div>
+<!-- === FIN MENSAJE ESPECIAL DE PRIMAVERA === -->
+
 <div id="authScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);">
   <div class="connect-card" style="width:min(420px,100%);">
     <div style="font-weight:700;font-size:20px;">Enfermería Roxy</div>
@@ -2624,6 +2649,20 @@
   }
   boot();
 })();
+
+  // === MENSAJE ESPECIAL DE PRIMAVERA ===
+  (function(){
+    var modal=document.getElementById("springGreeting");
+    var close=document.getElementById("springGreetingClose");
+    if(!modal||!close)return;
+    function closeGreeting(){modal.classList.remove("open");document.body.style.overflow="";}
+    close.addEventListener("click",closeGreeting);
+    modal.addEventListener("click",function(e){if(e.target===modal)closeGreeting();});
+    document.addEventListener("keydown",function(e){if(e.key==="Escape"&&modal.classList.contains("open"))closeGreeting();});
+    // Se muestra una sola vez por navegador durante esta sesión.
+    try{if(!sessionStorage.getItem("springGreetingShown")){modal.classList.add("open");document.body.style.overflow="hidden";sessionStorage.setItem("springGreetingShown","1");}}catch(_e){modal.classList.add("open");}
+  })();
+  // === FIN MENSAJE ESPECIAL DE PRIMAVERA ===
 </script>
 </body>
 </html>
