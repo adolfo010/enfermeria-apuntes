@@ -1387,11 +1387,18 @@
             escapeHtml(f.printedPages || f.pages || "—") + '</div>';
         }).join("") +
         '</div></div>';
-      renderPreview(null);
+      pickerWrap.innerHTML += '<div class="panel" style="margin-top:14px;"><h2>Contenido de los temas seleccionados</h2>' +
+        selected.map(function(f){
+          return '<article style="padding:14px 0;border-bottom:1px solid var(--border);">' +
+            '<h3 style="margin:0 0 6px;">'+escapeHtml(f.title || "Fragmento")+'</h3>' +
+            '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">'+
+            escapeHtml(f.fileName || f.documentTitle || "Fuente")+' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+(f.pages||"—"))+'</div>' +
+            '<div style="white-space:pre-wrap;line-height:1.65;">'+escapeHtml(f.content || f.preview || "No hay contenido disponible para este fragmento.")+'</div>' +
+          '</article>';
+        }).join("") + '</div>';
       return;
     }
-    pickerWrap.innerHTML = "";
-    renderPreview(null);
+    pickerWrap.innerHTML = '<div class="empty-state">Seleccioná primero uno o más temas en Buscar.</div>';
   }
 
   function wireSummaryLevelLabels(){
