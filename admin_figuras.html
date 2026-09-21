@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Importador de figuras — Enfermería</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;max-width:900px;margin:30px auto;padding:0 18px;background:#f5f4f6;color:#19171b}
+.card{background:#fff;border:1px solid #ddd8df;border-radius:14px;padding:22px;margin-bottom:18px;box-shadow:0 4px 16px #0000000d}
+h1{margin-top:0}.muted{color:#666}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+button{border:0;border-radius:9px;padding:11px 16px;background:#d9688f;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.5}
+progress{width:100%;height:22px}.ok{color:#287a58}.err{color:#b33b3b}.mono{font-family:monospace;white-space:pre-wrap;background:#f2f0f2;padding:12px;border-radius:8px;max-height:280px;overflow:auto}
+</style></head>
+<body>
+<div class="card"><h1>Importador de figuras — Testut/Latarjet Tomo I</h1>
+<p class="muted">Carga el ZIP generado por Nivel 2.6 en el bucket privado <b>knowledge-figures</b> y actualiza <b>knowledge_figures</b>. Solo ADMIN.</p>
+<div id="auth">Comprobando sesión…</div></div>
+<div class="card" id="panel" hidden>
+<label><b>ZIP de integración</b></label><br><br><input id="zip" type="file" accept=".zip"><br><br>
+<div class="row"><button id="start">Iniciar importación</button><span id="status"></span></div>
+<br><progress id="prog" value="0" max="100"></progress>
+<p id="counts"></p><div id="log" class="mono"></div>
+</div>
+<script>
+const SUPABASE_URL="https://ytwemlejamslvsulnvam.supabase.co";
+const ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzg5NTY1NzUwLCJleHAiOjIxMDUxNDE3NTB9.i55VG6JkliuMNnnbINq1I_7fQnMIx1hDMuL3Osbv-1I";
+const sb=window.supabase.createClient(SUPABASE_URL,ANON_KEY);
+const DOC_ID=6, BUCKET="knowledge-figures", ROOT="testut-tomo1";
+const $=id=>document.getElementById(id);
+function log(s,cls){const d=document.createElement("div");d.textContent=s;if(cls)d.className=cls;$("log").appendChild(d);$("log").scrollTop=$("log").scrollHeight}
+function csvRows(txt){const rows=[];let row=[],cell="",q=false;
+ for(let i=0;i<txt.length;i++){const c=txt[i],n=txt[i+1];if(c=='"'&&q&&n=='"'){cell+='"';i++;continue}if(c=='"'){q=!q;continue}if(c==','&&!q){row.push(cell);cell="";continue}if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;if(cell||row.length){row.push(cell);rows.push(row)}row=[];cell="";continue}cell+=c}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
+(async()=>{
+ const {data:{session}}=await sb.auth.getSession();
+ if(!session){$("auth").innerHTML='<span class="err">No hay sesión iniciada. Ingresá primero al sistema de Enfermería.</span>';return}
+ const {data:p,error}=await sb.from("profiles").select("role").eq("id",session.user.id).single();
+ if(error||!p||p.role!=="ADMIN"){$("auth").innerHTML='<span class="err">El usuario actual no tiene rol ADMIN.</span>';return}
+ $("auth").innerHTML='<span class="ok">✓ Sesión ADMIN verificada.</span>'; $("panel").hidden=false;
+})();
+$("start").onclick=async()=>{
+ const file=$("zip").files[0]; if(!file){alert("Seleccioná el ZIP de integración.");return}
+ $("start").disabled=true;$("log").textContent="";$("status").textContent="Preparando…";
+ try{
+  const z=await JSZip.loadAsync(file);
+  const mt=z.file("figure_manifest.csv"); if(!mt)throw Error("Falta figure_manifest.csv");
+  const rows=csvRows(await mt.async("text")); const head=rows.shift(); const ix={};head.forEach((x,i)=>ix[x]=i);
+  const imgs=Object.keys(z.files).filter(p=>p.startsWith("figures/")&&p.toLowerCase().endsWith(".jpg")&&!z.files[p].dir);
+  $("counts").textContent=imgs.length+" imágenes encontradas en el ZIP.";
+  let done=0,ok=0,fail=0;
+  const map=new Map(rows.map(r=>[r[ix.crop],r[ix.figure_id]]));
+  for(const name of imgs){
+    const key=map.get(name); if(!key){fail++;log("SIN MANIFEST: "+name,"err");continue}
+    try{
+      const blob=await z.files[name].async("blob");
+      const path=ROOT+"/"+key+".jpg";
+      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:"image/jpeg",upsert:true,cacheControl:"31536000"});
+      if(up.error)throw up.error;
+      const upd=await sb.from("knowledge_figures").update({storage_path:path,updated_at:new Date().toISOString()}).eq("document_id",DOC_ID).eq("figure_key",key);
+      if(upd.error)throw upd.error;
+      ok++;log("✓ "+key+" → "+path,"ok");
+    }catch(e){fail++;log("✗ "+key+" — "+(e.message||e),"err")}
+    done++;$("prog").value=Math.round(done/imgs.length*100);$("status").textContent=done+"/"+imgs.length;
+  }
+  $("counts").innerHTML="<b>Finalizado:</b> "+ok+" cargadas · "+fail+" con error.";
+ }catch(e){$("status").textContent="Error";log("ERROR: "+(e.message||e),"err")}
+ $("start").disabled=false;
+};
+</script></body></html>
