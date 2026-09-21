@@ -398,7 +398,7 @@
           <div id="resultsSortBar" style="display:flex;gap:6px;padding:0 10px 8px;"></div>
           <div id="selectionSummary"></div>
           <div class="results" id="results">
-            <div class="empty-state"><div class="big">＿</div>Escribí algo arriba para buscar en el Drive.</div>
+            <div class="empty-state"><div class="big">＿</div>Escribí un tema arriba para buscar en toda la base de conocimiento.</div>
           </div>
         </div>
       </section>
@@ -1890,7 +1890,7 @@
     if(!n){ wrap.innerHTML=""; return; }
     wrap.innerHTML=
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;">'+
-      '<span class="count">' + n + (n===1?' sección seleccionada':' secciones seleccionadas') + '</span>'+
+      '<span class="count">' + n + (n===1?' fragmento seleccionado':' fragmentos seleccionados') + '</span>'+
       '<button type="button" id="knowledgeSummaryBtn">Generar resumen ✨</button>'+
       '<button type="button" class="ghost" id="knowledgeExamBtn">Generar examen 📝</button>'+
       '<button type="button" class="ghost small" id="knowledgeClearBtn">Deseleccionar</button>'+
@@ -1992,7 +1992,7 @@
   }
   function generateKnowledgeOutput(mode){
     var selected=knowledgeSelectedList();
-    if(!selected.length){ alert("Seleccioná al menos una sección."); return; }
+    if(!selected.length){ alert("Seleccioná al menos un fragmento o una sección."); return; }
     var btn=document.getElementById(mode==="summary"?"knowledgeSummaryBtn":"knowledgeExamBtn");
     if(btn){btn.disabled=true;btn.textContent=mode==="summary"?"Generando resumen…":"Generando examen…";}
     els.preview.innerHTML='<div class="preview-title">'+(mode==="summary"?"Resumen con IA":"Examen generado con IA")+'</div>'+
