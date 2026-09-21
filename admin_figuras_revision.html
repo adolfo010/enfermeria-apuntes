@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revisión de figuras — Enfermería</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;max-width:1180px;margin:20px auto;padding:0 18px;background:#f4f6f8;color:#17202a}.card{background:#fff;border:1px solid #dce2e8;border-radius:14px;padding:18px;margin-bottom:16px}h1{margin:0 0 8px}.muted{color:#667085}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button{border:0;border-radius:8px;padding:10px 14px;background:#2f63d6;color:#fff;font-weight:700;cursor:pointer}button.red{background:#d63838}button:disabled{opacity:.5}.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.filters button{background:#e8edf5;color:#1d3557}.filters button.active{background:#2f63d6;color:#fff}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.item{border:1px solid #d8dee6;border-radius:10px;overflow:hidden;background:#fff}.item img{width:100%;height:180px;object-fit:contain;background:#f8fafc;display:block}.body{padding:10px}.tag{display:inline-block;background:#e9eef8;border-radius:12px;padding:3px 7px;font-size:12px;margin:2px}.keep{border-left:5px solid #268a57}.review{border-left:5px solid #d18b00}.discard{border-left:5px solid #d63838}.mono{font-family:monospace;white-space:pre-wrap;max-height:220px;overflow:auto;background:#f5f6f8;padding:10px;border-radius:8px}@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style></head>
+<body>
+<div class="card"><h1>Galería de revisión — filtro de artefactos</h1>
+<p class="muted">Versión nueva. Detecta automáticamente franjas, bordes, zonas uniformes y recortes anómalamente alargados antes de conservar una figura. Las figuras dudosas quedan en REVISAR.</p>
+<div id="auth">Comprobando sesión…</div></div>
+<div class="card" id="panel" hidden>
+<input id="zip" type="file" accept=".zip"><div class="row" style="margin-top:10px">
+<button id="analyze">Analizar ZIP</button><button id="import" disabled>Importar conservables</button></div>
+<div class="filters"><button class="active" data-f="all">Todas</button><button data-f="keep">Conservar</button><button data-f="review">Revisar</button><button data-f="discard">Descartar automáticamente</button></div>
+<div id="counts" class="muted"></div></div>
+<div class="card"><div id="grid" class="grid"></div></div>
+<div class="card"><div id="log" class="mono"></div></div>
+<script>
+const SUPABASE_URL="https://ytwemlejamslvsulnvam.supabase.co";
+const ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzg5NTY1NzUwLCJleHAiOjIxMDUxNDE3NTB9.i55VG6JkliuMNnnbINq1I_7fQnMIx1hDMuL3Osbv-1I";
+const sb=window.supabase.createClient(SUPABASE_URL,ANON_KEY),DOC_ID=6,BUCKET="knowledge-figures",ROOT="testut-tomo1";
+const $=id=>document.getElementById(id); let records=[],rows=[],map=new Map(),active="all";
+function csvRows(txt){const out=[];let row=[],cell="",q=false;for(let i=0;i<txt.length;i++){let c=txt[i],n=txt[i+1];if(c=='"'&&q&&n=='"'){cell+='"';i++;continue}if(c=='"'){q=!q;continue}if(c==','&&!q){row.push(cell);cell='';continue}if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;if(cell||row.length){row.push(cell);out.push(row)}row=[];cell='';continue}cell+=c}if(cell||row.length){row.push(cell);out.push(row)}return out}
+function log(s){$("log").textContent+=s+"\n";$("log").scrollTop=$("log").scrollHeight}
+function classify(w,h,edge,uniform){
+ const ar=Math.max(w,h)/Math.max(1,Math.min(w,h));
+ if(ar>=7)return ["discard","Franja extremadamente alargada"];
+ if(edge>=0.82 && (w>=900||h>=700))return ["discard","Predominio de borde/franja"];
+ if(uniform>=0.985)return ["discard","Zona prácticamente uniforme"];
+ if(edge>=0.62)return ["review","Posible borde o recorte parcial"];
+ if(ar>=4.8)return ["review","Proporción anómala; revisar"];
+ return ["keep","No se detecta artefacto físico evidente"];
+}
+async function inspect(blob){
+ const bmp=await createImageBitmap(blob), w=bmp.width,h=bmp.height;
+ const scale=Math.min(1,900/w,700/h),cw=Math.max(1,Math.round(w*scale)),ch=Math.max(1,Math.round(h*scale));
+ const cv=document.createElement("canvas");cv.width=cw;cv.height=ch;const ctx=cv.getContext("2d",{willReadFrequently:true});ctx.drawImage(bmp,0,0,cw,ch);
+ const d=ctx.getImageData(0,0,cw,ch).data, band=Math.max(2,Math.round(Math.min(cw,ch)*.035));
+ function mean(a,b){let s=0,n=0;for(let y=a;y<b;y++)for(let x=0;x<cw;x++){let i=(y*cw+x)*4;s+=(d[i]+d[i+1]+d[i+2])/3;n++}return s/n}
+ const top=mean(0,band),bot=mean(ch-band,ch),left=(()=>{let s=0,n=0;for(let y=0;y<ch;y++)for(let x=0;x<band;x++){let i=(y*cw+x)*4;s+=(d[i]+d[i+1]+d[i+2])/3;n++}return s/n})(),right=(()=>{let s=0,n=0;for(let y=0;y<ch;y++)for(let x=cw-band;x<cw;x++){let i=(y*cw+x)*4;s+=(d[i]+d[i+1]+d[i+2])/3;n++}return s/n})();
+ const center=mean(band,ch-band), edge=(Math.abs(top-center)<8?0:1)+(Math.abs(bot-center)<8?0:1)+(Math.abs(left-center)<8?0:1)+(Math.abs(right-center)<8?0:1); 
+ let same=0,total=0;for(let y=0;y<ch;y+=4)for(let x=0;x<cw;x+=4){let i=(y*cw+x)*4,lum=(d[i]+d[i+1]+d[i+2])/3;same+=lum>=235||lum<=18?1:0;total++} 
+ const uniform=same/Math.max(1,total); return {w,h,edge:edge/4,uniform};
+}
+function render(){const g=$("grid");g.innerHTML="";records.filter(r=>active==="all"||r.cls===active).forEach(r=>{const d=document.createElement("div");d.className="item "+r.cls;d.innerHTML='<img src="'+r.url+'"><div class="body"><b>'+r.key+'</b><div class="muted">'+r.reason+'</div><span class="tag">'+r.w+'×'+r.h+'</span><span class="tag">'+r.cls.toUpperCase()+'</span></div>';g.appendChild(d)});$("counts").textContent=records.length+" figuras · "+records.filter(x=>x.cls==="keep").length+" conservar · "+records.filter(x=>x.cls==="review").length+" revisar · "+records.filter(x=>x.cls==="discard").length+" descartar automáticamente";}
+(async()=>{const {data:{session}}=await sb.auth.getSession();if(!session){$("auth").textContent="No hay sesión iniciada.";return}const {data:p}=await sb.from("profiles").select("role").eq("id",session.user.id).single();if(!p||p.role!=="ADMIN"){$("auth").textContent="Se requiere rol ADMIN.";return}$("auth").textContent="✓ Sesión ADMIN verificada.";$("panel").hidden=false})();
+document.querySelectorAll(".filters button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".filters button").forEach(x=>x.classList.remove("active"));b.classList.add("active");active=b.dataset.f;render()});
+$("analyze").onclick=async()=>{const file=$("zip").files[0];if(!file){alert("Seleccioná el ZIP.");return}$("analyze").disabled=true;$("import").disabled=true;records=[];render();$("log").textContent="";try{const z=await JSZip.loadAsync(file),mf=z.file("figure_manifest.csv");if(!mf)throw Error("Falta figure_manifest.csv");rows=csvRows(await mf.async("text"));const head=rows.shift()||[],ix={};head.forEach((x,i)=>ix[x]=i);map=new Map(rows.map(r=>[r[ix.crop],r[ix.figure_id]]));const imgs=Object.keys(z.files).filter(p=>p.startsWith("figures/")&&/\.(jpg|jpeg|png|webp)$/i.test(p)&&!z.files[p].dir);for(const name of imgs){const key=map.get(name);if(!key)continue;const blob=await z.files[name].async("blob"),m=await inspect(blob),[cls,reason]=classify(m.w,m.h,m.edge,m.uniform);records.push({key,name,blob,url:URL.createObjectURL(blob),cls,reason,w:m.w,h:m.h})}render();$("import").disabled=false;log("Análisis terminado. Los descartes son preventivos: no se eliminó ningún archivo del ZIP.")}catch(e){log("ERROR: "+e.message)}$("analyze").disabled=false};
+$("import").onclick=async()=>{const keep=records.filter(r=>r.cls==="keep");if(!keep.length)return;let ok=0,fail=0;for(const r of keep){try{const path=ROOT+"/"+r.key+".jpg";const up=await sb.storage.from(BUCKET).upload(path,r.blob,{contentType:"image/jpeg",upsert:true,cacheControl:"31536000"});if(up.error)throw up.error;const u=await sb.from("knowledge_figures").update({storage_path:path,updated_at:new Date().toISOString()}).eq("document_id",DOC_ID).eq("figure_key",r.key);if(u.error)throw u.error;ok++}catch(e){fail++;log("✗ "+r.key+" — "+e.message)}}log("Importación: "+ok+" conservadas · "+fail+" errores. Revisar y descartar quedan fuera de la carga.");};
+</script></body></html>
