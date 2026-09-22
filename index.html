@@ -547,7 +547,7 @@
     </main>
   </div>
 
-<div class="figures-import-modal" id="figuresImportModal" aria-hidden="true"><div class="figures-import-card"><div style="display:flex;justify-content:space-between;gap:12px"><div><h2 style="margin:0 0 5px">Importar figuras anatómicas</h2><div class="muted">Carga el ZIP de integración de Nivel 2.6.</div></div><button type="button" class="small ghost" id="closeFiguresImportBtn">Cerrar</button></div><div style="margin-top:16px"><input type="file" id="figuresZipInput" accept=".zip"></div><div style="display:flex;gap:8px;align-items:center;margin-top:12px"><button type="button" id="startFiguresImportBtn">Iniciar importación</button><span id="figuresImportStatus" class="muted"></span></div><div class="progress-track"><div class="progress-fill" id="figuresImportProgress"></div></div><div id="figuresImportCounts" class="muted" style="margin-top:8px"></div><div id="figuresImportLog" class="figures-import-log"></div></div></div>
+<div class="figures-import-modal" id="figuresImportModal" aria-hidden="true"><div class="figures-import-card"><div style="display:flex;justify-content:space-between;gap:12px"><div><h2 style="margin:0 0 5px">Importar figuras anatómicas</h2><div class="muted">Carga el ZIP revisado de figuras anatómicas. Se incorporan únicamente las figuras conservadas manualmente.</div></div><button type="button" class="small ghost" id="closeFiguresImportBtn">Cerrar</button></div><div style="margin-top:16px"><input type="file" id="figuresZipInput" accept=".zip"></div><div style="display:flex;gap:8px;align-items:center;margin-top:12px"><button type="button" id="startFiguresImportBtn">Iniciar importación</button><span id="figuresImportStatus" class="muted"></span></div><div class="progress-track"><div class="progress-fill" id="figuresImportProgress"></div></div><div id="figuresImportCounts" class="muted" style="margin-top:8px"></div><div id="figuresImportLog" class="figures-import-log"></div></div></div>
   <footer class="note">
     Enfermería Roxy · conectado directo a Google Drive.
     <div id="appVersion" style="font-family:var(--font-mono);font-size:12px;color:var(--muted);">Versión</div>
@@ -563,7 +563,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.28";
+  var APP_VERSION = "0.4.29";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2659,7 +2659,58 @@
   function openFiguresImportModal(){var m=document.getElementById("figuresImportModal");m.classList.add("open");m.setAttribute("aria-hidden","false");document.getElementById("figuresImportLog").textContent="";}
   function closeFiguresImportModal(){var m=document.getElementById("figuresImportModal");m.classList.remove("open");m.setAttribute("aria-hidden","true");}
   function parseFiguresCsv(t){var a=[],r=[],c="",q=false;for(var i=0;i<t.length;i++){var x=t[i],n=t[i+1];if(x==='"'&&q&&n==='"'){c+='"';i++;continue}if(x==='"'){q=!q;continue}if(x===','&&!q){r.push(c);c='';continue}if((x==='\n'||x==='\r')&&!q){if(x==='\r'&&n==='\n')i++;if(c||r.length){r.push(c);a.push(r)}r=[];c='';continue}c+=x}if(c||r.length){r.push(c);a.push(r)}return a;}
-  async function importFiguresZip(){if(currentUserRole!=="ADMIN"){alert("Solo ADMIN puede importar figuras.");return}var f=document.getElementById("figuresZipInput").files[0];if(!f){alert("Seleccioná el ZIP.");return}var b=document.getElementById("startFiguresImportBtn"),l=document.getElementById("figuresImportLog"),s=document.getElementById("figuresImportStatus"),p=document.getElementById("figuresImportProgress"),ct=document.getElementById("figuresImportCounts");b.disabled=true;l.textContent="";try{var z=await JSZip.loadAsync(f),mf=z.file("figure_manifest.csv");if(!mf)throw Error("Falta figure_manifest.csv");var rr=parseFiguresCsv(await mf.async("text")),h=rr.shift()||[],ix={};h.forEach(function(x,i){ix[x]=i});if(ix.figure_id==null||ix.crop==null)throw Error("Manifest incompleto");var map=new Map();rr.forEach(function(r){if(r[ix.crop])map.set(r[ix.crop],r[ix.figure_id])});var imgs=Object.keys(z.files).filter(function(x){return x.indexOf("figures/")===0&&/\.(jpg|jpeg|png|webp)$/i.test(x)&&!z.files[x].dir});var ok=0,fail=0;for(var i=0;i<imgs.length;i++){var n=imgs[i],k=map.get(n);try{if(!k)throw Error("sin manifest");var e=((/\.([^.]+)$/.exec(n)||[])[1]||"jpg").toLowerCase(),mi=e==="png"?"image/png":e==="webp"?"image/webp":"image/jpeg",ab=await z.files[n].async("arraybuffer"),bl=new Blob([ab],{type:mi}),path="testut-tomo1/"+k+"."+e;var up=await supabaseClient.storage.from("knowledge-figures").upload(path,bl,{contentType:mi,upsert:true,cacheControl:"31536000"});if(up.error)throw up.error;var u=await supabaseClient.from("knowledge_figures").update({storage_path:path,updated_at:new Date().toISOString()}).eq("document_id",6).eq("figure_key",k);if(u.error)throw u.error;ok++;l.textContent+="✓ "+k+"\n"}catch(e2){fail++;l.textContent+="✗ "+(k||n)+" — "+e2.message+"\n"}p.style.width=Math.round((i+1)/imgs.length*100)+"%";s.textContent=(i+1)+"/"+imgs.length;l.scrollTop=l.scrollHeight}ct.innerHTML="<b>Finalizado:</b> "+ok+" cargadas · "+fail+" con error";}catch(e){s.textContent="Error";l.textContent="ERROR: "+e.message}b.disabled=false;}
+  async function importFiguresZip(){
+    if(currentUserRole!=="ADMIN"){alert("Solo ADMIN puede importar figuras.");return}
+    var file=document.getElementById("figuresZipInput").files[0];
+    if(!file){alert("Seleccioná el ZIP.");return}
+    var b=document.getElementById("startFiguresImportBtn"),l=document.getElementById("figuresImportLog"),s=document.getElementById("figuresImportStatus"),p=document.getElementById("figuresImportProgress"),ct=document.getElementById("figuresImportCounts");
+    b.disabled=true;l.textContent="";p.style.width="0%";ct.textContent="";
+    var DOC_ID=5, STORAGE_PREFIX="rouviere-tomo1/";
+    try{
+      var z=await JSZip.loadAsync(file),mf=z.file("figure_manifest.csv");
+      if(!mf)throw Error("Falta figure_manifest.csv");
+      var rr=parseFiguresCsv(await mf.async("text")),h=rr.shift()||[],ix={};h.forEach(function(x,i){ix[x]=i});
+      ["figure_id","crop","pdf_page","source_xref","bbox","confidence","status"].forEach(function(k){if(ix[k]==null)throw Error("Manifest incompleto: falta "+k)});
+      var rows=rr.filter(function(r){return String(r[ix.status]||"").toLowerCase()==="keep"&&r[ix.crop]&&r[ix.figure_id]});
+      if(!rows.length)throw Error("El ZIP no contiene figuras conservadas para importar.");
+      var doc=await supabaseClient.from("knowledge_documents").select("id,title,file_name").eq("id",DOC_ID).maybeSingle();
+      if(doc.error)throw doc.error;
+      if(!doc.data)throw Error("No existe el documento Rouvière (document_id 5).");
+      var existing=await supabaseClient.from("knowledge_figures").select("id,figure_key,storage_path").eq("document_id",DOC_ID);
+      if(existing.error)throw existing.error;
+      var existingByKey={};(existing.data||[]).forEach(function(x){existingByKey[String(x.figure_key)]=x});
+      var missing=rows.filter(function(r){return !existingByKey[String(r[ix.figure_id])]}).map(function(r){
+        var md={width:Number(r[ix.width]||0),height:Number(r[ix.height]||0),occupancy:Number(r[ix.occupancy]||0),area_ratio:Number(r[ix.area_ratio]||0),edge_ratio:Number(r[ix.edge_ratio]||0),color_ratio:Number(r[ix.color_ratio]||0),score:Number(r[ix.score]||0),priority:r[ix.priority]||"",classification:r[ix.classification]||"",text_context:r[ix.text_context]||"",document_key:r[ix.document_key]||"",figure_refs_on_page:r[ix.figure_refs_on_page]||"",crop:r[ix.crop]};
+        return {document_id:DOC_ID,figure_key:r[ix.figure_id],pdf_page:Number(r[ix.pdf_page]),figure_number:r[ix.figure_number]?Number(r[ix.figure_number]):null,source_xref:r[ix.source_xref]?Number(r[ix.source_xref]):null,bbox:r[ix.bbox]||null,confidence:r[ix.confidence]?({alta:0.9,media:0.6,baja:0.3}[String(r[ix.confidence]).toLowerCase()]||Number(r[ix.confidence])||null):null,status:"active",reviewed:true,metadata:md};
+      });
+      if(missing.length){for(var q=0;q<missing.length;q+=50){var ins=await supabaseClient.from("knowledge_figures").insert(missing.slice(q,q+50));if(ins.error)throw ins.error}}
+      var refreshed=await supabaseClient.from("knowledge_figures").select("id,figure_key").eq("document_id",DOC_ID);
+      if(refreshed.error)throw refreshed.error;
+      var idsByKey={};(refreshed.data||[]).forEach(function(x){idsByKey[String(x.figure_key)]=x.id});
+      var imgs=rows.filter(function(r){return z.files[r[ix.crop]]&&!z.files[r[ix.crop]].dir});
+      var ok=0,fail=0;
+      for(var i=0;i<imgs.length;i++){
+        var r=imgs[i],n=r[ix.crop],k=r[ix.figure_id];
+        try{
+          var e=((/\.([^.]+)$/.exec(n)||[])[1]||"jpg").toLowerCase(),mi=e==="png"?"image/png":e==="webp"?"image/webp":"image/jpeg",ab=await z.files[n].async("arraybuffer"),bl=new Blob([ab],{type:mi}),path=STORAGE_PREFIX+k+"."+e;
+          var up=await supabaseClient.storage.from("knowledge-figures").upload(path,bl,{contentType:mi,upsert:true,cacheControl:"31536000"});
+          if(up.error)throw up.error;
+          var u=await supabaseClient.from("knowledge_figures").update({storage_path:path,status:"active",reviewed:true,updated_at:new Date().toISOString()}).eq("document_id",DOC_ID).eq("figure_key",k);
+          if(u.error)throw u.error;
+          ok++;l.textContent+="✓ "+k+" · pág. "+r[ix.pdf_page]+"\n";
+        }catch(e2){fail++;l.textContent+="✗ "+(k||n)+" — "+e2.message+"\n"}
+        p.style.width=Math.round((i+1)/imgs.length*100)+"%";s.textContent=(i+1)+"/"+imgs.length;l.scrollTop=l.scrollHeight;
+      }
+      var fr=await supabaseClient.from("knowledge_fragments").select("id,page_start,page_end").eq("document_id",DOC_ID);
+      if(fr.error)throw fr.error;
+      var relations=[];
+      (fr.data||[]).forEach(function(frag){rows.forEach(function(r){var page=Number(r[ix.pdf_page]);if(page>=Number(frag.page_start)&&page<=Number(frag.page_end)){var fid=idsByKey[String(r[ix.figure_id])];if(fid)relations.push({fragment_id:frag.id,figure_id:fid,relation_type:"same_page_range",weight:1.0})}})});
+      for(var j=0;j<relations.length;j+=100){var rel=await supabaseClient.from("knowledge_fragment_figures").upsert(relations.slice(j,j+100),{onConflict:"fragment_id,figure_id"});if(rel.error)throw rel.error}
+      ct.innerHTML="<b>Finalizado:</b> "+ok+" figuras cargadas · "+fail+" con error · "+missing.length+" registros creados · "+relations.length+" relaciones con fragmentos.";
+      s.textContent="Importación completada";
+    }catch(e){s.textContent="Error";l.textContent="ERROR: "+e.message;ct.textContent="La importación se detuvo sin continuar."}
+    b.disabled=false;
+  }
   document.getElementById("figuresImportBtn").addEventListener("click",openFiguresImportModal);document.getElementById("closeFiguresImportBtn").addEventListener("click",closeFiguresImportModal);document.getElementById("figuresImportModal").addEventListener("click",function(e){if(e.target===this)closeFiguresImportModal()});document.getElementById("startFiguresImportBtn").addEventListener("click",importFiguresZip);
   async function startAuthenticatedApp(session){
     if (!session || !session.access_token){ showLogin(); return; }
