@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS uq_knowledge_fragments_document_page;
