@@ -1,0 +1,13 @@
+-- A pedido explícito: se borra por completo el documento "Compendio de Anatomía
+-- Descriptiva (Testut-Latarjet)" (knowledge_documents.id=2), cargado con el
+-- sistema/flujo viejo (mezcla de manual_chat_modo_a + ocr + OCR corregido, con
+-- duplicados y un tramo grande mal etiquetado — ver migraciones anteriores).
+-- Se va a volver a cargar desde cero con el flujo nuevo (texto+imágenes
+-- extraídos localmente por el usuario, catalogado prolijamente).
+--
+-- No tenía figuras vinculadas (knowledge_figures.document_id=2 = 0), así que
+-- no hay nada que limpiar en Storage. El ON DELETE CASCADE de las FKs se
+-- encarga de knowledge_fragments (270), knowledge_document_concepts (243) y
+-- knowledge_fragment_concepts (4274) asociados. La tabla knowledge_concepts
+-- (vocabulario compartido entre libros) NO se toca.
+delete from public.knowledge_documents where id = 2;
