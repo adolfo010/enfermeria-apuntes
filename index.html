@@ -163,7 +163,10 @@
   #catalogBtn{font-family:var(--font-mono);font-size:12.5px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;}
   #catalogBtn:hover{color:var(--ink);border-color:var(--accent);}
   #catalogBtn:disabled{opacity:0.6;cursor:default;}
-  #catalogMsg{font-size:13px;} .figures-import-modal{position:fixed;inset:0;background:rgba(26,20,23,.52);display:none;align-items:center;justify-content:center;padding:20px;z-index:1300}.figures-import-modal.open{display:flex}.figures-import-card{width:min(760px,100%);max-height:90vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px}.figures-import-log{margin-top:12px;max-height:260px;overflow:auto;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:10px;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap}
+  #catalogMsg{font-size:13px;} 
+  .figure-editor-modal{position:fixed;inset:0;background:rgba(26,20,23,.58);display:none;align-items:center;justify-content:center;padding:20px;z-index:1400}.figure-editor-modal.open{display:flex}.figure-editor-card{width:min(900px,100%);max-height:94vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px}.figure-editor-grid{display:grid;grid-template-columns:minmax(280px,1.2fr) minmax(280px,1fr);gap:18px}.figure-editor-image{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:12px;text-align:center;min-height:260px;display:flex;align-items:center;justify-content:center}.figure-editor-image img{display:block;max-width:100%;max-height:68vh;width:auto;height:auto;border-radius:7px}.figure-editor-form{display:flex;flex-direction:column;gap:10px}.figure-editor-form label{font-size:13px;font-weight:600;color:var(--muted)}.figure-editor-form input,.figure-editor-form select,.figure-editor-form textarea{font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%}.figure-editor-form textarea{min-height:100px;resize:vertical}.figure-editor-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px}.figure-editor-danger{margin-right:auto;background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger)}
+  @media (max-width:700px){.figure-editor-grid{grid-template-columns:1fr}.figure-editor-image img{max-height:45vh}}
+.figures-import-modal{position:fixed;inset:0;background:rgba(26,20,23,.52);display:none;align-items:center;justify-content:center;padding:20px;z-index:1300}.figures-import-modal.open{display:flex}.figures-import-card{width:min(760px,100%);max-height:90vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px}.figures-import-log{margin-top:12px;max-height:260px;overflow:auto;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:10px;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap}
   .summarize-row{display:flex;gap:8px;margin-top:12px;}
   .summarize-row input{flex:1;min-width:0;font-family:var(--font-body);font-size:14.5px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);outline:none;}
   .summary-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);}
@@ -547,6 +550,21 @@
     </main>
   </div>
 
+<div class="figure-editor-modal" id="figureEditorModal" aria-hidden="true"><div class="figure-editor-card">
+  <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h2 style="margin:0 0 5px">Editar figura anatómica</h2><div class="muted">Esta herramienta está disponible para ADMIN. Podés corregir la referencia de la figura o eliminarla.</div></div><button type="button" class="small ghost" id="closeFigureEditorBtn">Cerrar</button></div>
+  <div id="figureEditorStatus" class="banner info" style="margin-top:14px;display:none;"></div>
+  <div class="figure-editor-grid" style="margin-top:16px">
+    <div><div id="figureEditorImage" class="figure-editor-image"><span class="muted">Cargando figura…</span></div><div id="figureEditorMeta" class="muted" style="font-size:12px;margin-top:8px;"></div></div>
+    <div class="figure-editor-form">
+      <div><label for="figureEditorKey">Identificador</label><input id="figureEditorKey" readonly></div>
+      <div><label for="figureEditorPage">Página PDF</label><input id="figureEditorPage" type="number" min="1"></div>
+      <div><label for="figureEditorCaption">Pie / referencia textual</label><textarea id="figureEditorCaption" placeholder="Ej.: Tórax, vista anterior"></textarea></div>
+      <div><label for="figureEditorFragment">Fragmento asociado en el buscador</label><select id="figureEditorFragment"><option value="">— Sin asociación —</option></select></div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.45;">Cambiar el fragmento modifica dónde aparecerá esta figura en los resultados. Por ejemplo, si una imagen de tórax quedó asociada a un fragmento incorrecto, seleccioná aquí el fragmento correcto.</div>
+      <div class="figure-editor-actions"><button type="button" class="small figure-editor-danger" id="deleteFigureBtn">Eliminar figura</button><button type="button" class="small ghost" id="cancelFigureEditorBtn">Cancelar</button><button type="button" class="small" id="saveFigureEditorBtn">Guardar cambios</button></div>
+    </div>
+  </div>
+</div></div>
 <div class="figures-import-modal" id="figuresImportModal" aria-hidden="true"><div class="figures-import-card"><div style="display:flex;justify-content:space-between;gap:12px"><div><h2 style="margin:0 0 5px">Importar figuras anatómicas</h2><div class="muted">Carga el ZIP revisado de figuras anatómicas. Se incorporan únicamente las figuras conservadas manualmente.</div></div><button type="button" class="small ghost" id="closeFiguresImportBtn">Cerrar</button></div><div style="margin-top:16px"><input type="file" id="figuresZipInput" accept=".zip"></div><div style="display:flex;gap:8px;align-items:center;margin-top:12px"><button type="button" id="startFiguresImportBtn">Iniciar importación</button><span id="figuresImportStatus" class="muted"></span></div><div class="progress-track"><div class="progress-fill" id="figuresImportProgress"></div></div><div id="figuresImportCounts" class="muted" style="margin-top:8px"></div><div id="figuresImportLog" class="figures-import-log"></div></div></div>
   <footer class="note">
     Enfermería Roxy · conectado directo a Google Drive.
@@ -563,7 +581,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.29";
+  var APP_VERSION = "0.4.30";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1565,6 +1583,12 @@
 
       var card=document.createElement("figure");
       card.style.cssText="margin:18px 0 8px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);text-align:center;";
+      if(currentUserRole==="ADMIN"){
+        card.style.cursor="pointer";
+        card.title="ADMIN: abrir figura para editar";
+        card.addEventListener("click",function(){ openFigureEditorWindow(fig.id); });
+      }
+
 
       var url=signedMap[fig.storage_path];
       if(url){
@@ -2656,6 +2680,110 @@
     setTimeout(closeAccountModal,1200);
   });
 
+  function openFigureEditorWindow(figureId){
+    if(currentUserRole!=="ADMIN"){alert("Solo ADMIN puede editar figuras.");return;}
+    var url=location.pathname+"?editarFigura="+encodeURIComponent(figureId);
+    var w=window.open(url,"editarFigura_"+figureId,"width=1100,height=850,resizable=yes,scrollbars=yes");
+    if(!w) alert("El navegador bloqueó la ventana. Permití ventanas emergentes para este sitio.");
+  }
+  var __figureEditorData=null;
+  async function openFigureEditor(figureId){
+    if(currentUserRole!=="ADMIN") return;
+    var modal=document.getElementById("figureEditorModal");
+    modal.classList.add("open"); modal.setAttribute("aria-hidden","false");
+    document.getElementById("figureEditorStatus").style.display="none";
+    document.getElementById("figureEditorImage").innerHTML='<span class="muted">Cargando figura…</span>';
+    document.getElementById("figureEditorMeta").textContent="";
+    try{
+      var fr=await supabaseClient.from("knowledge_figures").select("id,figure_key,figure_number,caption,pdf_page,printed_page,storage_path,status,reviewed").eq("id",Number(figureId)).maybeSingle();
+      if(fr.error) throw fr.error;
+      if(!fr.data) throw Error("No se encontró la figura.");
+      __figureEditorData=fr.data;
+      var fg=fr.data;
+      document.getElementById("figureEditorKey").value=fg.figure_key||"";
+      document.getElementById("figureEditorPage").value=fg.pdf_page||"";
+      document.getElementById("figureEditorCaption").value=fg.caption||"";
+      document.getElementById("figureEditorMeta").textContent=(fg.figure_number?"Figura "+fg.figure_number+" · ":"")+(fg.printed_page?"p. impresa "+fg.printed_page+" · ":"")+"p. PDF "+(fg.pdf_page||"—")+" · "+(fg.status||"");
+      if(fg.storage_path){
+        var su=await supabaseClient.storage.from("knowledge-figures").createSignedUrl(fg.storage_path,900);
+        if(!su.error&&su.data&&su.data.signedUrl){
+          var im=document.createElement("img"); im.src=su.data.signedUrl; im.alt=fg.caption||fg.figure_key||"Figura anatómica";
+          document.getElementById("figureEditorImage").replaceChildren(im);
+        }else{
+          document.getElementById("figureEditorImage").textContent="No se pudo cargar la imagen.";
+        }
+      }
+      var topics=await supabaseClient.from("knowledge_fragments").select("id,title,page_start,page_end").eq("document_id",5).order("page_start",{ascending:true});
+      if(topics.error) throw topics.error;
+      var sel=document.getElementById("figureEditorFragment");
+      sel.innerHTML='<option value="">— Sin asociación —</option>';
+      (topics.data||[]).forEach(function(f){
+        var op=document.createElement("option");
+        op.value=String(f.id);
+        op.textContent=(f.title||"Fragmento")+" · p. "+(f.page_start||"—")+"–"+(f.page_end||"—");
+        sel.appendChild(op);
+      });
+      var rel=await supabaseClient.from("knowledge_fragment_figures").select("fragment_id").eq("figure_id",fg.id).order("fragment_id",{ascending:true});
+      if(rel.error) throw rel.error;
+      if(rel.data&&rel.data.length) sel.value=String(rel.data[0].fragment_id);
+    }catch(e){
+      showFigureEditorStatus("No se pudo cargar la figura: "+(e.message||"error"),"danger");
+    }
+  }
+  function showFigureEditorStatus(message,type){
+    var el=document.getElementById("figureEditorStatus"); el.className="banner "+(type||"info"); el.textContent=message; el.style.display="flex";
+  }
+  function closeFigureEditor(){
+    var m=document.getElementById("figureEditorModal"); m.classList.remove("open"); m.setAttribute("aria-hidden","true");
+    __figureEditorData=null;
+  }
+  async function saveFigureEditor(){
+    if(!__figureEditorData||currentUserRole!=="ADMIN") return;
+    var btn=document.getElementById("saveFigureEditorBtn"); btn.disabled=true; btn.textContent="Guardando…";
+    try{
+      var page=Number(document.getElementById("figureEditorPage").value);
+      if(!Number.isFinite(page)||page<1) throw Error("La página PDF no es válida.");
+      var caption=document.getElementById("figureEditorCaption").value.trim();
+      var fragmentId=Number(document.getElementById("figureEditorFragment").value)||null;
+      var up=await supabaseClient.from("knowledge_figures").update({pdf_page:page,caption:caption||null,updated_at:new Date().toISOString()}).eq("id",__figureEditorData.id);
+      if(up.error) throw up.error;
+      var del=await supabaseClient.from("knowledge_fragment_figures").delete().eq("figure_id",__figureEditorData.id);
+      if(del.error) throw del.error;
+      if(fragmentId){
+        var ins=await supabaseClient.from("knowledge_fragment_figures").insert({fragment_id:fragmentId,figure_id:__figureEditorData.id,relation_type:"manual",weight:1.0});
+        if(ins.error) throw ins.error;
+      }
+      showFigureEditorStatus("Cambios guardados correctamente.","info");
+      if(window.opener&&!window.opener.closed){ try{window.opener.location.reload();}catch(_e){} }
+      setTimeout(function(){closeFigureEditor();},700);
+    }catch(e){showFigureEditorStatus("No se pudieron guardar los cambios: "+(e.message||"error"),"danger");}
+    finally{btn.disabled=false;btn.textContent="Guardar cambios";}
+  }
+  async function deleteFigure(){
+    if(!__figureEditorData||currentUserRole!=="ADMIN") return;
+    var fg=__figureEditorData;
+    if(!confirm("¿Eliminar definitivamente la figura "+(fg.figure_key||"")+"? Esta acción no se puede deshacer.")) return;
+    var btn=document.getElementById("deleteFigureBtn"); btn.disabled=true; btn.textContent="Eliminando…";
+    try{
+      var rel=await supabaseClient.from("knowledge_fragment_figures").delete().eq("figure_id",fg.id);
+      if(rel.error) throw rel.error;
+      if(fg.storage_path){
+        var rm=await supabaseClient.storage.from("knowledge-figures").remove([fg.storage_path]);
+        if(rm.error) throw rm.error;
+      }
+      var db=await supabaseClient.from("knowledge_figures").delete().eq("id",fg.id);
+      if(db.error) throw db.error;
+      showFigureEditorStatus("Figura eliminada correctamente.","info");
+      if(window.opener&&!window.opener.closed){ try{window.opener.location.reload();}catch(_e){} }
+      setTimeout(function(){closeFigureEditor();},700);
+    }catch(e){showFigureEditorStatus("No se pudo eliminar la figura: "+(e.message||"error"),"danger");}
+    finally{btn.disabled=false;btn.textContent="Eliminar figura";}
+  }
+  function initFigureEditorFromQuery(){
+    var id=new URLSearchParams(location.search).get("editarFigura");
+    if(id && currentUserRole==="ADMIN") setTimeout(function(){openFigureEditor(id);},250);
+  }
+
   function openFiguresImportModal(){var m=document.getElementById("figuresImportModal");m.classList.add("open");m.setAttribute("aria-hidden","false");document.getElementById("figuresImportLog").textContent="";}
   function closeFiguresImportModal(){var m=document.getElementById("figuresImportModal");m.classList.remove("open");m.setAttribute("aria-hidden","true");}
   function parseFiguresCsv(t){var a=[],r=[],c="",q=false;for(var i=0;i<t.length;i++){var x=t[i],n=t[i+1];if(x==='"'&&q&&n==='"'){c+='"';i++;continue}if(x==='"'){q=!q;continue}if(x===','&&!q){r.push(c);c='';continue}if((x==='\n'||x==='\r')&&!q){if(x==='\r'&&n==='\n')i++;if(c||r.length){r.push(c);a.push(r)}r=[];c='';continue}c+=x}if(c||r.length){r.push(c);a.push(r)}return a;}
@@ -2711,6 +2839,11 @@
     }catch(e){s.textContent="Error";l.textContent="ERROR: "+e.message;ct.textContent="La importación se detuvo sin continuar."}
     b.disabled=false;
   }
+  document.getElementById("closeFigureEditorBtn").addEventListener("click",closeFigureEditor);
+  document.getElementById("cancelFigureEditorBtn").addEventListener("click",closeFigureEditor);
+  document.getElementById("figureEditorModal").addEventListener("click",function(e){if(e.target===this)closeFigureEditor();});
+  document.getElementById("saveFigureEditorBtn").addEventListener("click",saveFigureEditor);
+  document.getElementById("deleteFigureBtn").addEventListener("click",deleteFigure);
   document.getElementById("figuresImportBtn").addEventListener("click",openFiguresImportModal);document.getElementById("closeFiguresImportBtn").addEventListener("click",closeFiguresImportModal);document.getElementById("figuresImportModal").addEventListener("click",function(e){if(e.target===this)closeFiguresImportModal()});document.getElementById("startFiguresImportBtn").addEventListener("click",importFiguresZip);
   async function startAuthenticatedApp(session){
     if (!session || !session.access_token){ showLogin(); return; }
@@ -2729,6 +2862,7 @@
       registerServiceWorker();
       renderRecentSearches();
       loadDownloadDir();
+      initFigureEditorFromQuery();
 
       var params = new URLSearchParams(location.search);
       var wasShare = params.get("share") === "1";
