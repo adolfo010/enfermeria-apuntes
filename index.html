@@ -2381,7 +2381,8 @@
       params.count=Number(document.getElementById("knowledgeExamCount")?.value||10);
       params.examType=document.getElementById("knowledgeExamType")?.value||"Mixto";
       params.difficulty=Number(document.getElementById("knowledgeExamDifficulty")?.value||3);
-      params.showAnswers=!!document.getElementById("knowledgeExamAnswers")?.checked;
+      var answersCheckbox=document.getElementById("knowledgeExamAnswers");
+      params.showAnswers=answersCheckbox?!!answersCheckbox.checked:true;
     }
     callKnowledge(params)
       .then(function(payload){
