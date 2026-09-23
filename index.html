@@ -2306,7 +2306,12 @@
       ch.addEventListener("change",function(){
         var details=ch.closest("details");
         if(!details) return;
-        Array.prototype.forEach.call(details.querySelectorAll(".knowledge-fragment-check"),function(f){
+        var fragChecks=details.querySelectorAll(".knowledge-fragment-check");
+        if(ch.checked && fragChecks.length>8){
+          var ok=confirm("Esto va a seleccionar "+fragChecks.length+" resultados de golpe, que pueden incluir páginas de temas distintos dentro del mismo libro (por ejemplo, si el libro no tiene subtemas marcados, se seleccionaría el libro entero). ¿Seguís?");
+          if(!ok){ ch.checked=false; return; }
+        }
+        Array.prototype.forEach.call(fragChecks,function(f){
           var id=f.getAttribute("data-id");
           f.checked=ch.checked;
           if(ch.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
