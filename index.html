@@ -365,6 +365,7 @@
       <div class="nav-items">
         <button type="button" class="nav-item active" data-section="buscar">🔍 Buscar</button>
         <button type="button" class="nav-item" data-section="preview">🖼 Vista previa</button>
+        <button type="button" class="nav-item" data-section="galeria">🗂 Galería</button>
         <button type="button" class="nav-item" data-section="resumen">✨ Resumen</button>
         <button type="button" class="nav-item" data-section="examen">📝 Examen</button>
         <button type="button" class="nav-item" data-section="preguntas">💬 Preguntas</button>
@@ -412,6 +413,12 @@
       <section class="app-section" data-section-panel="preview" hidden style="width:100%;">
         <div class="preview-body" id="preview" style="width:100%;min-height:72vh;padding:0;">
           <div class="empty-state"><div class="big">▢</div>Seleccioná temas en Buscar para ver su contenido.</div>
+        </div>
+      </section>
+
+      <section class="app-section" data-section-panel="galeria" hidden style="width:100%;">
+        <div id="galeriaSectionBody" style="width:100%;min-height:72vh;">
+          <div class="empty-state"><div class="big">🗂</div>Seleccioná temas en Buscar para ver sus imágenes.</div>
         </div>
       </section>
 
@@ -1385,6 +1392,7 @@
       s.hidden = s.getAttribute("data-section-panel") !== name;
     });
     if (name === "preview") renderVistaPreviaSection();
+    else if (name === "galeria") renderGaleriaSection();
     else if (name === "resumen") renderResumenSection();
     else if (name === "examen") renderExamenSection();
     else if (name === "preguntas") renderPreguntasSection();
@@ -1523,6 +1531,207 @@
       if(cardEl && cardEl.parentNode) cardEl.parentNode.removeChild(cardEl);
     }catch(e){
       alert("No se pudo quitar la asociación: "+(e.message||"error"));
+    }
+  }
+
+  // === Galería por tema: solo imágenes de los temas seleccionados, con
+  // selección para descargar como ZIP (sin mezclar con el texto). Reusa la
+  // misma selección de temas que Vista previa/Resumen/Examen/Preguntas.
+  var galeriaSelectedFigureIds={};
+
+  function renderGaleriaSection(){
+    var wrap=document.getElementById("galeriaSectionBody");
+    var selected=knowledgeSelectedList();
+    if(!wrap) return;
+    if(!selected.length){
+      wrap.innerHTML='<div class="empty-state"><div class="big">🗂</div>Seleccioná temas en Buscar para ver sus imágenes.</div>';
+      return;
+    }
+    galeriaSelectedFigureIds={};
+    wrap.innerHTML=
+      '<div class="panel" style="width:100%;min-height:72vh;max-height:78vh;overflow-y:auto;padding:28px 38px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;">'+
+        '<h2 style="font-size:20px;margin:0;">Imágenes de los temas seleccionados</h2>'+
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
+          '<span id="galeriaSelectionCount" class="muted" style="font-size:13px;">0 seleccionadas</span>'+
+          '<button type="button" class="small ghost" id="galeriaSelectAllBtn">Seleccionar todas</button>'+
+          '<button type="button" class="small" id="galeriaDownloadBtn" disabled>Descargar seleccionadas ⬇</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="galeriaGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;"></div>'+
+      '</div>';
+
+    document.getElementById("galeriaSelectAllBtn").addEventListener("click", galeriaSelectAll);
+    document.getElementById("galeriaDownloadBtn").addEventListener("click", galeriaDownloadSelected);
+
+    loadGaleriaFigures(selected);
+  }
+
+  async function loadGaleriaFigures(selected){
+    var grid=document.getElementById("galeriaGrid");
+    if(!grid || !window.supabase || !supabaseClient) return;
+    var ids=selected.map(function(f){return Number(f.id);}).filter(function(id){return Number.isFinite(id);});
+    if(!ids.length) return;
+
+    grid.innerHTML='<div class="empty-state">Cargando imágenes…</div>';
+
+    var relRes=await supabaseClient
+      .from("knowledge_fragment_figures")
+      .select("fragment_id,figure_id")
+      .in("fragment_id",ids);
+
+    if(relRes.error || !relRes.data || !relRes.data.length){
+      grid.innerHTML='<div class="empty-state">No hay imágenes vinculadas a estos temas.</div>';
+      return;
+    }
+
+    var figureIds=[...new Set(relRes.data.map(function(r){return r.figure_id;}).filter(Boolean))];
+    if(!figureIds.length){
+      grid.innerHTML='<div class="empty-state">No hay imágenes vinculadas a estos temas.</div>';
+      return;
+    }
+
+    var figRes=await supabaseClient
+      .from("knowledge_figures")
+      .select("id,figure_key,figure_number,caption,pdf_page,printed_page,storage_path,status")
+      .in("id",figureIds)
+      .eq("status","active");
+
+    if(figRes.error || !figRes.data || !figRes.data.length){
+      grid.innerHTML='<div class="empty-state">No se pudieron cargar las imágenes.</div>';
+      return;
+    }
+
+    var paths=figRes.data.map(function(f){return f.storage_path;}).filter(Boolean);
+    var signedMap={};
+    if(paths.length){
+      var signed=await supabaseClient.storage.from("knowledge-figures").createSignedUrls([...new Set(paths)],900);
+      if(!signed.error && signed.data){
+        signed.data.forEach(function(x){
+          if(x && x.path && x.signedUrl) signedMap[x.path]=x.signedUrl;
+        });
+      }
+    }
+
+    grid.innerHTML="";
+    figRes.data.forEach(function(fig){
+      var url=signedMap[fig.storage_path];
+
+      var card=document.createElement("div");
+      card.className="galeria-card";
+      card.dataset.figureId=fig.id;
+      card.style.cssText="border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface-2);position:relative;cursor:pointer;transition:outline .1s;";
+      card._figData=fig; card._figUrl=url;
+
+      var checkbox=document.createElement("input");
+      checkbox.type="checkbox";
+      checkbox.setAttribute("aria-label","Seleccionar imagen");
+      checkbox.style.cssText="position:absolute;top:8px;left:8px;width:20px;height:20px;z-index:2;cursor:pointer;";
+      checkbox.addEventListener("click", function(e){
+        e.stopPropagation();
+        toggleGaleriaSelection(fig.id, checkbox.checked, card);
+      });
+      card.appendChild(checkbox);
+
+      if(url){
+        var img=document.createElement("img");
+        img.src=url;
+        img.alt=fig.caption || fig.figure_key || "Figura anatómica";
+        img.style.cssText="display:block;width:100%;height:180px;object-fit:contain;background:#fff;";
+        card.appendChild(img);
+      } else {
+        var noImg=document.createElement("div");
+        noImg.textContent="No se pudo cargar la imagen.";
+        noImg.style.cssText="padding:70px 10px;text-align:center;color:var(--muted);font-size:13px;";
+        card.appendChild(noImg);
+      }
+
+      var caption=document.createElement("div");
+      caption.style.cssText="padding:8px 10px;font-size:12px;color:var(--muted);line-height:1.4;";
+      var label=fig.figure_number ? "Figura "+fig.figure_number : (fig.figure_key || "Figura");
+      var page=fig.printed_page || fig.pdf_page ? " · p. "+(fig.printed_page || fig.pdf_page) : "";
+      caption.textContent=label+page+(fig.caption ? " — "+fig.caption : "");
+      card.appendChild(caption);
+
+      card.addEventListener("click", function(){
+        checkbox.checked=!checkbox.checked;
+        toggleGaleriaSelection(fig.id, checkbox.checked, card);
+      });
+
+      grid.appendChild(card);
+    });
+
+    updateGaleriaSelectionUI();
+  }
+
+  function toggleGaleriaSelection(figureId, checked, cardEl){
+    if(checked){
+      galeriaSelectedFigureIds[figureId]=true;
+      cardEl.style.outline="3px solid var(--accent)";
+    } else {
+      delete galeriaSelectedFigureIds[figureId];
+      cardEl.style.outline="none";
+    }
+    updateGaleriaSelectionUI();
+  }
+
+  function galeriaSelectAll(){
+    var grid=document.getElementById("galeriaGrid");
+    if(!grid) return;
+    Array.prototype.forEach.call(grid.children, function(card){
+      var cb=card.querySelector("input[type=checkbox]");
+      if(cb && !cb.checked){ cb.checked=true; toggleGaleriaSelection(Number(card.dataset.figureId), true, card); }
+    });
+  }
+
+  function updateGaleriaSelectionUI(){
+    var n=Object.keys(galeriaSelectedFigureIds).length;
+    var countEl=document.getElementById("galeriaSelectionCount");
+    var btn=document.getElementById("galeriaDownloadBtn");
+    if(countEl) countEl.textContent=n + (n===1 ? " seleccionada" : " seleccionadas");
+    if(btn) btn.disabled = n===0;
+  }
+
+  async function galeriaDownloadSelected(){
+    var grid=document.getElementById("galeriaGrid");
+    if(!grid || !window.JSZip) return;
+    var cards=Array.prototype.filter.call(grid.children, function(card){
+      return galeriaSelectedFigureIds[Number(card.dataset.figureId)];
+    });
+    if(!cards.length) return;
+
+    var btn=document.getElementById("galeriaDownloadBtn");
+    var origText=btn.textContent;
+    btn.disabled=true; btn.textContent="Preparando ZIP…";
+
+    try{
+      var zip=new JSZip();
+      var used={};
+      for(var i=0;i<cards.length;i++){
+        var fig=cards[i]._figData, url=cards[i]._figUrl;
+        if(!url) continue;
+        var resp=await fetch(url);
+        if(!resp.ok) continue;
+        var blob=await resp.blob();
+        var ext=(fig.storage_path && fig.storage_path.split(".").pop()) || "jpg";
+        var base=(fig.figure_key || ("figura_"+fig.id)).replace(/[\\\/:*?"<>|]+/g,"_");
+        var name=base+"."+ext;
+        var n=1; while(used[name]){ name=base+"_"+(++n)+"."+ext; }
+        used[name]=true;
+        zip.file(name, blob);
+      }
+      var content=await zip.generateAsync({type:"blob"});
+      var a=document.createElement("a");
+      a.href=URL.createObjectURL(content);
+      a.download="figuras_seleccionadas.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 30000);
+    }catch(e){
+      alert("No se pudo armar el ZIP: "+(e.message||"error"));
+    }finally{
+      btn.disabled=false; btn.textContent=origText;
     }
   }
 
