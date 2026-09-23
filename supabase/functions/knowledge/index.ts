@@ -332,8 +332,9 @@ async function webResearch(user: any, topic: string) {
     })
   });
   if (!fragRes.ok) throw new Error("WEB_FRAGMENT_SAVE_FAILED");
+  const [frag] = await fragRes.json();
 
-  return { documentId: doc.id, title: doc.title, content, citations };
+  return { documentId: doc.id, fragmentId: frag.id, title: doc.title, content, citations };
 }
 
 function sourceMeta(f:any) {

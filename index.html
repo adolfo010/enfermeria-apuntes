@@ -2380,8 +2380,13 @@
       '<div id="webSearchStatus" style="margin-top:8px;"></div>'+
       '</div>';
     if(lastWebAnswer && lastWebAnswer.topic===knowledgeTopic){
+      var checked=lastWebAnswer.fragmentId && knowledgeSelectedIds[String(lastWebAnswer.fragmentId)] ? " checked" : "";
       html+='<div class="panel" style="margin:10px 6px;padding:12px;">'+
-        '<div class="preview-title" style="margin-bottom:6px;">Apunte generado — "'+escapeHtml(lastWebAnswer.topic)+'"</div>'+
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;">'+
+        (lastWebAnswer.fragmentId ? '<input type="checkbox" id="webAnswerCheck" data-id="'+lastWebAnswer.fragmentId+'"'+checked+'>' : '')+
+        '<span class="preview-title">Apunte generado — "'+escapeHtml(lastWebAnswer.topic)+'"</span>'+
+        '</label>'+
+        '<div class="muted" style="font-size:12px;margin-bottom:6px;">Tildá la casilla para incluirlo al generar un resumen o examen, igual que cualquier otro fragmento.</div>'+
         '<div class="banner warn" style="white-space:pre-wrap;">'+escapeHtml(lastWebAnswer.content||"")+'</div>'+
         '</div>';
     }
@@ -2390,25 +2395,39 @@
 
   function wireWebSearchBar(){
     var btn=document.getElementById("webSearchBtn");
-    if(!btn) return;
-    btn.addEventListener("click",function(){
-      var term=knowledgeTopic;
-      if(!term) return;
-      btn.disabled=true;
-      btn.textContent="Buscando en la web…";
-      var status=document.getElementById("webSearchStatus");
-      status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el apunte (puede tardar un minuto)…';
-      callKnowledge({action:"webSearch",topic:term})
-        .then(function(res){
-          lastWebAnswer={topic:term,content:res.content||""};
-          runSearch(term);
-        })
-        .catch(function(err){
-          status.innerHTML='<div class="banner danger">No se pudo buscar en la web ('+escapeHtml(err.message)+').</div>';
-          btn.disabled=false;
-          btn.textContent='Buscar "'+term+'" en la web con IA 🌐';
-        });
-    });
+    if(btn){
+      btn.addEventListener("click",function(){
+        var term=knowledgeTopic;
+        if(!term) return;
+        btn.disabled=true;
+        btn.textContent="Buscando en la web…";
+        var status=document.getElementById("webSearchStatus");
+        status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el apunte (puede tardar un minuto)…';
+        callKnowledge({action:"webSearch",topic:term})
+          .then(function(res){
+            lastWebAnswer={topic:term,content:res.content||"",fragmentId:res.fragmentId};
+            runSearch(term);
+            // runSearch limpia la selección al iniciar la búsqueda; se vuelve a
+            // marcar acá (de forma síncrona, antes de que responda el fetch)
+            // para que el fragmento nuevo quede preseleccionado desde el
+            // primer render del árbol.
+            if(res.fragmentId) knowledgeSelectedIds[String(res.fragmentId)]=true;
+          })
+          .catch(function(err){
+            status.innerHTML='<div class="banner danger">No se pudo buscar en la web ('+escapeHtml(err.message)+').</div>';
+            btn.disabled=false;
+            btn.textContent='Buscar "'+term+'" en la web con IA 🌐';
+          });
+      });
+    }
+    var webCheck=document.getElementById("webAnswerCheck");
+    if(webCheck){
+      webCheck.addEventListener("change",function(){
+        var id=webCheck.getAttribute("data-id");
+        if(webCheck.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
+        renderKnowledgeSelectionBar();
+      });
+    }
   }
 
   function generateKnowledgeOutput(mode){
