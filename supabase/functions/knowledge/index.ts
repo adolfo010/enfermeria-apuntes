@@ -305,7 +305,7 @@ async function webResearch(user: any, topic: string) {
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({
       drive_file_id: null,
-      file_name: null,
+      file_name: `${cleanTopic} (IA + Web)`,
       title: `${cleanTopic} (IA + Web, no verificado)`,
       source_type: "ia_web",
       subject_area: "Anatomia",
