@@ -2162,6 +2162,7 @@
   var knowledgeSelectedIds = {};
   var knowledgeLastGroups = [];
   var knowledgeTopic = "";
+  var lastWebAnswer = null; // {topic, content} — apunte completo de la última consulta "IA + Web", se mantiene visible entre re-renders
 
   function callKnowledge(payload){
     return fetch(SUPABASE_URL + "/functions/v1/knowledge", {
@@ -2373,11 +2374,18 @@
   }
 
   function renderWebSearchBar(){
-    return '<div class="panel" style="margin:10px 6px;padding:12px;">'+
+    var html='<div class="panel" style="margin:10px 6px;padding:12px;">'+
       '<div style="font-size:13px;" class="muted">¿No encontraste suficiente en los libros cargados?</div>'+
       '<button type="button" id="webSearchBtn" class="ghost" style="margin-top:6px;">Buscar "'+escapeHtml(knowledgeTopic)+'" en la web con IA 🌐</button>'+
       '<div id="webSearchStatus" style="margin-top:8px;"></div>'+
       '</div>';
+    if(lastWebAnswer && lastWebAnswer.topic===knowledgeTopic){
+      html+='<div class="panel" style="margin:10px 6px;padding:12px;">'+
+        '<div class="preview-title" style="margin-bottom:6px;">Apunte generado — "'+escapeHtml(lastWebAnswer.topic)+'"</div>'+
+        '<div class="banner warn" style="white-space:pre-wrap;">'+escapeHtml(lastWebAnswer.content||"")+'</div>'+
+        '</div>';
+    }
+    return html;
   }
 
   function wireWebSearchBar(){
@@ -2392,8 +2400,7 @@
       status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el apunte (puede tardar un minuto)…';
       callKnowledge({action:"webSearch",topic:term})
         .then(function(res){
-          status.innerHTML='<div class="banner warn">'+escapeHtml(res.content||"").replace(/\n/g,"<br>")+'</div>'+
-            '<div class="muted" style="font-size:12px;margin-top:6px;">Guardado como fuente nueva en la base — ya aparece en los resultados de búsqueda de este tema.</div>';
+          lastWebAnswer={topic:term,content:res.content||""};
           runSearch(term);
         })
         .catch(function(err){
