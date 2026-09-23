@@ -2230,12 +2230,15 @@
     var html='';
     if(!knowledgeLastGroups.length){
       html='<div class="empty-state"><div class="big">∅</div>No se encontraron secciones relacionadas con <strong>'+escapeHtml(knowledgeTopic)+'</strong>.</div>';
+      html+=renderWebSearchBar();
       els.results.innerHTML=html;
       renderKnowledgeSelectionBar();
+      wireWebSearchBar();
       return;
     }
 
     html+='<div class="banner info" style="margin:6px 6px 10px;">El sistema buscó en toda la base de conocimiento. La bibliografía aparece como fuente de cada contenido; no es necesario elegirla previamente.</div>';
+    html+=renderWebSearchBar();
 
     // Construimos un árbol a partir de las rutas almacenadas en los fragmentos.
     var root={children:{},groups:[]};
@@ -2366,7 +2369,41 @@
     });
     renderKnowledgeSelectionBar();
     hydrateKnowledgeFigureUrls();
+    wireWebSearchBar();
   }
+
+  function renderWebSearchBar(){
+    return '<div class="panel" style="margin:10px 6px;padding:12px;">'+
+      '<div style="font-size:13px;" class="muted">¿No encontraste suficiente en los libros cargados?</div>'+
+      '<button type="button" id="webSearchBtn" class="ghost" style="margin-top:6px;">Buscar "'+escapeHtml(knowledgeTopic)+'" en la web con IA 🌐</button>'+
+      '<div id="webSearchStatus" style="margin-top:8px;"></div>'+
+      '</div>';
+  }
+
+  function wireWebSearchBar(){
+    var btn=document.getElementById("webSearchBtn");
+    if(!btn) return;
+    btn.addEventListener("click",function(){
+      var term=knowledgeTopic;
+      if(!term) return;
+      btn.disabled=true;
+      btn.textContent="Buscando en la web…";
+      var status=document.getElementById("webSearchStatus");
+      status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el apunte (puede tardar un minuto)…';
+      callKnowledge({action:"webSearch",topic:term})
+        .then(function(res){
+          status.innerHTML='<div class="banner warn">'+escapeHtml(res.content||"").replace(/\n/g,"<br>")+'</div>'+
+            '<div class="muted" style="font-size:12px;margin-top:6px;">Guardado como fuente nueva en la base — ya aparece en los resultados de búsqueda de este tema.</div>';
+          runSearch(term);
+        })
+        .catch(function(err){
+          status.innerHTML='<div class="banner danger">No se pudo buscar en la web ('+escapeHtml(err.message)+').</div>';
+          btn.disabled=false;
+          btn.textContent='Buscar "'+term+'" en la web con IA 🌐';
+        });
+    });
+  }
+
   function generateKnowledgeOutput(mode){
     var selected=knowledgeSelectedList();
     if(!selected.length){ alert("Seleccioná al menos un fragmento o una sección."); return; }
