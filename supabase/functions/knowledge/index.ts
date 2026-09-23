@@ -52,7 +52,7 @@ function extractOutput(j: any) {
     .trim();
 }
 
-async function callOpenAI(input: string, maxOutputTokens: number) {
+async function callOpenAI(input: string, maxOutputTokens: number, tools?: any[]) {
   if (!OPENAI_API_KEY) throw new Error("OPENAI_NOT_CONFIGURED");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
@@ -67,15 +67,30 @@ async function callOpenAI(input: string, maxOutputTokens: number) {
       body: JSON.stringify({
         model: OPENAI_MODEL,
         input,
-        max_output_tokens: maxOutputTokens
+        max_output_tokens: maxOutputTokens,
+        ...(tools ? { tools } : {})
       })
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error?.message || "OPENAI_ERROR");
-    return { text: extractOutput(j), raw: j };
+    return { text: extractOutput(j), citations: extractCitations(j), raw: j };
   } finally {
     clearTimeout(timer);
   }
+}
+
+function extractCitations(j: any) {
+  const seen = new Map<string, string>();
+  for (const o of j?.output || []) {
+    for (const p of o?.content || []) {
+      for (const a of p?.annotations || []) {
+        if (a?.type === "url_citation" && a.url && !seen.has(a.url)) {
+          seen.set(a.url, cleanText(a.title || a.url, 200));
+        }
+      }
+    }
+  }
+  return [...seen.entries()].map(([url, title]) => ({ url, title }));
 }
 
 async function recordUsage(user: any, action: string, topic: string, response: any, fragments: any[]) {
@@ -269,6 +284,59 @@ async function generate(user:any, mode:string, topic:string, ids:number[], examO
   return {questions:Array.isArray(parsed?.questions)?parsed.questions:[],sources:selected.map(sourceMeta)};
 }
 
+const WEB_IA_WARNING = "⚠️ Contenido generado por IA a partir de una búsqueda web en el momento de la consulta. No es un libro de cátedra verificado: puede contener errores o imprecisiones. Usar como apoyo y confirmar con la bibliografía oficial.";
+
+async function webResearch(user: any, topic: string) {
+  const cleanTopic = cleanText(topic, 300);
+  if (!cleanTopic) throw new Error("TOPIC_REQUIRED");
+  const prompt = `Sos un asistente académico que ayuda a una estudiante de Licenciatura en Enfermería a armar un apunte de estudio sobre "${cleanTopic}" (anatomía/fisiología humana, contexto de una materia introductoria de estructura y función del cuerpo humano).\n\nBuscá información en la web en fuentes confiables (universidades, sociedades científicas, portales médicos/enfermería reconocidos). Redactá un apunte claro y organizado en español, con títulos y viñetas, en tus propias palabras (no copies texto textual de ninguna fuente). Si hay datos que no encontrás con confianza, decilo en vez de inventarlos.`;
+  const r = await callOpenAI(prompt, 6000, [{ type: "web_search" }]);
+  if (!r.text.trim()) throw new Error("EMPTY_WEB_RESEARCH");
+  await recordUsage(user, "knowledgeWebResearch", cleanTopic, r.raw, []);
+
+  const citations = r.citations || [];
+  const citationsText = citations.length
+    ? "\n\nFuentes consultadas:\n" + citations.map((c: any) => `- ${c.title}: ${c.url}`).join("\n")
+    : "";
+  const content = `${WEB_IA_WARNING}\n\n${r.text.trim()}${citationsText}`;
+
+  const docRes = await rest("knowledge_documents", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      drive_file_id: null,
+      file_name: `${cleanTopic} (IA + Web)`,
+      title: `${cleanTopic} (IA + Web, no verificado)`,
+      source_type: "ia_web",
+      subject_area: "Anatomia",
+      page_count: 1,
+      processing_status: "completed",
+      metadata: { citations, generated_at: new Date().toISOString(), generated_by: user?.email ?? null }
+    })
+  });
+  if (!docRes.ok) throw new Error("WEB_DOCUMENT_SAVE_FAILED");
+  const [doc] = await docRes.json();
+
+  const fragRes = await rest("knowledge_fragments", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      document_id: doc.id,
+      page_start: 1,
+      page_end: 1,
+      content,
+      tipo_contenido: "texto",
+      extraction_method: "ia_web_search",
+      estado_fragmento: "COMPLETO",
+      ruta: `${cleanTopic} (IA + Web, no verificado)`
+    })
+  });
+  if (!fragRes.ok) throw new Error("WEB_FRAGMENT_SAVE_FAILED");
+  const [frag] = await fragRes.json();
+
+  return { documentId: doc.id, fragmentId: frag.id, title: doc.title, content, citations };
+}
+
 function sourceMeta(f:any) {
   return {
     documentId:f.document_id,
@@ -305,6 +373,10 @@ Deno.serve(async (req:Request)=>{
       const topic=cleanText(body.topic,300);
       const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty};
       return json({ok:true,mode,topic,...await generate(user,mode,topic,ids,examOptions)});
+    }
+    if(action==="webSearch"){
+      const topic=cleanText(body.topic,300);
+      return json({ok:true,...await webResearch(user,topic)});
     }
     return json({error:"INVALID_ACTION"},400);
   } catch(e:any) {

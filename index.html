@@ -1405,7 +1405,18 @@
     });
   });
 
-  function renderVistaPreviaSection(){
+  async function loadFullFragmentContents(ids){
+    var out={};
+    var clean=[...new Set((ids||[]).map(Number).filter(Number.isFinite))];
+    if(!window.supabase || !supabaseClient || !clean.length) return out;
+    var res=await supabaseClient.from("knowledge_fragments").select("id,content").in("id",clean);
+    if(!res.error && res.data){
+      res.data.forEach(function(r){ out[String(r.id)]=r.content; });
+    }
+    return out;
+  }
+
+  async function renderVistaPreviaSection(){
     var wrap=document.getElementById("preview");
     var selected=knowledgeSelectedList();
     if(!wrap) return;
@@ -1413,6 +1424,16 @@
       wrap.innerHTML='<div class="empty-state"><div class="big">▢</div>Seleccioná temas en Buscar para ver su contenido.</div>';
       return;
     }
+    wrap.innerHTML='<div class="empty-state"><span class="spin"></span>&nbsp; Cargando contenido completo…</div>';
+
+    // El árbol de búsqueda solo trae una vista previa recortada (420
+    // caracteres) de cada fragmento; acá se pide el texto completo para no
+    // mostrar el contenido cortado a la mitad de una palabra.
+    var fullContents=await loadFullFragmentContents(selected.map(function(f){return f.id;}));
+    selected.forEach(function(f){
+      var full=fullContents[String(f.id)];
+      if(full!=null) f.content=full;
+    });
 
     wrap.innerHTML=
       '<div class="panel" style="width:100%;min-height:72vh;max-height:78vh;overflow-y:auto;padding:28px 38px;">'+
@@ -2162,6 +2183,7 @@
   var knowledgeSelectedIds = {};
   var knowledgeLastGroups = [];
   var knowledgeTopic = "";
+  var lastWebAnswer = null; // {topic, content} — apunte completo de la última consulta "IA + Web", se mantiene visible entre re-renders
 
   function callKnowledge(payload){
     return fetch(SUPABASE_URL + "/functions/v1/knowledge", {
@@ -2230,12 +2252,15 @@
     var html='';
     if(!knowledgeLastGroups.length){
       html='<div class="empty-state"><div class="big">∅</div>No se encontraron secciones relacionadas con <strong>'+escapeHtml(knowledgeTopic)+'</strong>.</div>';
+      html+=renderWebSearchBar();
       els.results.innerHTML=html;
       renderKnowledgeSelectionBar();
+      wireWebSearchBar();
       return;
     }
 
     html+='<div class="banner info" style="margin:6px 6px 10px;">El sistema buscó en toda la base de conocimiento. La bibliografía aparece como fuente de cada contenido; no es necesario elegirla previamente.</div>';
+    html+=renderWebSearchBar();
 
     // Construimos un árbol a partir de las rutas almacenadas en los fragmentos.
     var root={children:{},groups:[]};
@@ -2366,7 +2391,66 @@
     });
     renderKnowledgeSelectionBar();
     hydrateKnowledgeFigureUrls();
+    wireWebSearchBar();
   }
+
+  function renderWebSearchBar(){
+    var html='<div class="panel" style="margin:10px 6px;padding:12px;">'+
+      '<div style="font-size:13px;" class="muted">¿No encontraste suficiente en los libros cargados?</div>'+
+      '<button type="button" id="webSearchBtn" class="ghost" style="margin-top:6px;">Buscar "'+escapeHtml(knowledgeTopic)+'" en la web con IA 🌐</button>'+
+      '<div id="webSearchStatus" style="margin-top:8px;"></div>'+
+      '</div>';
+    if(lastWebAnswer && lastWebAnswer.topic===knowledgeTopic){
+      var checked=lastWebAnswer.fragmentId && knowledgeSelectedIds[String(lastWebAnswer.fragmentId)] ? " checked" : "";
+      html+='<div class="panel" style="margin:10px 6px;padding:12px;">'+
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;">'+
+        (lastWebAnswer.fragmentId ? '<input type="checkbox" id="webAnswerCheck" data-id="'+lastWebAnswer.fragmentId+'"'+checked+'>' : '')+
+        '<span class="preview-title">Apunte generado — "'+escapeHtml(lastWebAnswer.topic)+'"</span>'+
+        '</label>'+
+        '<div class="muted" style="font-size:12px;margin-bottom:6px;">Tildá la casilla para incluirlo al generar un resumen o examen, igual que cualquier otro fragmento.</div>'+
+        '<div class="banner warn" style="white-space:pre-wrap;">'+escapeHtml(lastWebAnswer.content||"")+'</div>'+
+        '</div>';
+    }
+    return html;
+  }
+
+  function wireWebSearchBar(){
+    var btn=document.getElementById("webSearchBtn");
+    if(btn){
+      btn.addEventListener("click",function(){
+        var term=knowledgeTopic;
+        if(!term) return;
+        btn.disabled=true;
+        btn.textContent="Buscando en la web…";
+        var status=document.getElementById("webSearchStatus");
+        status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el apunte (puede tardar un minuto)…';
+        callKnowledge({action:"webSearch",topic:term})
+          .then(function(res){
+            lastWebAnswer={topic:term,content:res.content||"",fragmentId:res.fragmentId};
+            runSearch(term);
+            // runSearch limpia la selección al iniciar la búsqueda; se vuelve a
+            // marcar acá (de forma síncrona, antes de que responda el fetch)
+            // para que el fragmento nuevo quede preseleccionado desde el
+            // primer render del árbol.
+            if(res.fragmentId) knowledgeSelectedIds[String(res.fragmentId)]=true;
+          })
+          .catch(function(err){
+            status.innerHTML='<div class="banner danger">No se pudo buscar en la web ('+escapeHtml(err.message)+').</div>';
+            btn.disabled=false;
+            btn.textContent='Buscar "'+term+'" en la web con IA 🌐';
+          });
+      });
+    }
+    var webCheck=document.getElementById("webAnswerCheck");
+    if(webCheck){
+      webCheck.addEventListener("change",function(){
+        var id=webCheck.getAttribute("data-id");
+        if(webCheck.checked) knowledgeSelectedIds[id]=true; else delete knowledgeSelectedIds[id];
+        renderKnowledgeSelectionBar();
+      });
+    }
+  }
+
   function generateKnowledgeOutput(mode){
     var selected=knowledgeSelectedList();
     if(!selected.length){ alert("Seleccioná al menos un fragmento o una sección."); return; }
