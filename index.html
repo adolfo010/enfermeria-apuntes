@@ -2250,6 +2250,20 @@
       node.groups.push(g);
     });
 
+    // Estos libros nuevos no tienen subtemas reales: todo cuelga de un único
+    // nivel "Texto" que no aporta nada (siempre el mismo texto, repetido).
+    // Se saca ese nivel intermedio para que el árbol vaya directo de
+    // libro -> resultados, en vez de libro -> "Texto" -> resultados.
+    (function collapseGenericLevel(node){
+      var keys=Object.keys(node.children);
+      if(keys.length===1 && keys[0]==="Texto"){
+        var child=node.children[keys[0]];
+        node.groups=(node.groups||[]).concat(child.groups||[]);
+        node.children=child.children||{};
+      }
+      Object.keys(node.children).forEach(function(k){ collapseGenericLevel(node.children[k]); });
+    })(root);
+
     function renderTree(node,path){
       var keys=Object.keys(node.children);
       keys.sort(function(a,b){return a.localeCompare(b,"es",{numeric:true,sensitivity:"base"});});
@@ -2274,7 +2288,12 @@
             body+='<input type="checkbox" class="knowledge-fragment-check sel-check" data-id="'+escapeHtml(String(f.id))+'" data-group="'+escapeHtml(gid)+'" '+(checked?'checked':'')+'>';
             body+='<div class="meta"><div class="rtitle">'+escapeHtml(f.title||"Fragmento")+'</div>';
             body+='<div class="rsub">'+escapeHtml(f.fileName||f.documentTitle||"Fuente")+' · '+escapeHtml(f.printedPages ? "p. impresa "+f.printedPages : "p. "+f.pages)+'</div>';
-            body+='<div style="margin-top:4px;color:var(--muted);font-size:12.5px;line-height:1.4;">'+escapeHtml(f.preview||"")+'</div>';
+            var previewFull=f.preview||"";
+            var previewShort=previewFull.length>140 ? previewFull.slice(0,140)+"…" : previewFull;
+            body+='<div class="frag-preview" style="margin-top:4px;color:var(--muted);font-size:12.5px;line-height:1.4;">'+
+              '<span class="frag-preview-text" data-short="'+escapeHtml(previewShort)+'" data-full="'+escapeHtml(previewFull)+'">'+escapeHtml(previewShort)+'</span>'+
+              (previewFull.length>140 ? ' <a href="#" class="frag-preview-toggle" style="font-size:11.5px;">Ver más</a>' : '')+
+              '</div>';
             body+='</div></label>';
           });
           body+='</div>';
@@ -2292,6 +2311,18 @@
     html+='<div class="knowledge-tree">'+renderTree(root,"n")+'</div>';
     html+='<div class="muted" style="font-size:12px;margin:10px 6px;">Marcá la casilla de cualquier nivel para seleccionar toda la rama que depende de él. También podés seleccionar fragmentos individuales y combinar contenidos de diferentes libros.</div>';
     els.results.innerHTML=html;
+
+    Array.prototype.forEach.call(els.results.querySelectorAll(".frag-preview-toggle"),function(a){
+      a.addEventListener("click",function(e){
+        e.preventDefault(); e.stopPropagation();
+        var span=a.previousElementSibling;
+        if(!span || !span.classList.contains("frag-preview-text")) return;
+        var expanded=span.getAttribute("data-expanded")==="1";
+        span.textContent=expanded?span.getAttribute("data-short"):span.getAttribute("data-full");
+        span.setAttribute("data-expanded",expanded?"0":"1");
+        a.textContent=expanded?"Ver más":"Ver menos";
+      });
+    });
 
     Array.prototype.forEach.call(els.results.querySelectorAll(".knowledge-fragment-check"),function(ch){
       ch.addEventListener("change",function(){
