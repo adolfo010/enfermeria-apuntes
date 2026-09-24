@@ -507,28 +507,30 @@ async function ensureItemFragmentIds(row: any) {
   return updated;
 }
 
-async function generateFromSyllabus(user: any, mode: string, syllabusText: string, examOptions: any = {}) {
+async function generateFromSyllabus(user: any, mode: string, syllabusText: string, examOptions: any = {}, force = false) {
   const hash = await sha256Hex(syllabusCacheKey(syllabusText, mode, examOptions));
 
-  const found = await rest(`knowledge_syllabus_generations?syllabus_hash=eq.${hash}&select=*&limit=1`);
-  if (found.ok) {
-    const rows = await found.json();
-    const row = Array.isArray(rows) ? rows[0] : null;
-    if (row) {
-      rest(`knowledge_syllabus_generations?id=eq.${row.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ last_used_at: new Date().toISOString(), use_count: (row.use_count || 1) + 1 })
-      }).catch(() => {});
-      const itemsCovered = await ensureItemFragmentIds(row);
-      return {
-        summary: row.summary ?? undefined,
-        questions: row.questions ?? undefined,
-        topic: row.topic,
-        itemsCovered,
-        sources: row.sources || [],
-        fromCache: true,
-        generationId: row.id
-      };
+  if (!force) {
+    const found = await rest(`knowledge_syllabus_generations?syllabus_hash=eq.${hash}&select=*&limit=1`);
+    if (found.ok) {
+      const rows = await found.json();
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (row) {
+        rest(`knowledge_syllabus_generations?id=eq.${row.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ last_used_at: new Date().toISOString(), use_count: (row.use_count || 1) + 1 })
+        }).catch(() => {});
+        const itemsCovered = await ensureItemFragmentIds(row);
+        return {
+          summary: row.summary ?? undefined,
+          questions: row.questions ?? undefined,
+          topic: row.topic,
+          itemsCovered,
+          sources: row.sources || [],
+          fromCache: true,
+          generationId: row.id
+        };
+      }
     }
   }
 
@@ -536,9 +538,14 @@ async function generateFromSyllabus(user: any, mode: string, syllabusText: strin
 
   let generationId: number | undefined;
   try {
-    const ins = await rest("knowledge_syllabus_generations", {
+    // Con force=true puede ya existir una fila con este mismo syllabus_hash
+    // (de una generación anterior con lógica vieja) — usamos upsert para
+    // actualizarla en el lugar en vez de fallar por la restricción unique,
+    // así se conserva el mismo id (y con él, los intentos de examen ya
+    // guardados que lo referencian).
+    const ins = await rest("knowledge_syllabus_generations?on_conflict=syllabus_hash", {
       method: "POST",
-      headers: { Prefer: "return=representation" },
+      headers: { Prefer: "return=representation,resolution=merge-duplicates" },
       body: JSON.stringify({
         syllabus_hash: hash,
         mode,
@@ -549,7 +556,8 @@ async function generateFromSyllabus(user: any, mode: string, syllabusText: strin
         questions: mode === "questions" ? (result as any).questions : null,
         items_covered: result.itemsCovered,
         sources: result.sources,
-        created_by: user?.email ?? null
+        created_by: user?.email ?? null,
+        last_used_at: new Date().toISOString()
       })
     });
     if (ins.ok) {
@@ -1021,11 +1029,110 @@ async function searchOpenIImages(term: string, limit = 6) {
   return images;
 }
 
+// Muchos términos anatómicos de un solo término en español son ambiguos en
+// bases mayormente en inglés (ej. "brazo" matchea "Brazo Oriental" -
+// Uruguay -, "mano" matchea una ciudad japonesa y una cantante). Traducir a
+// un término anatómico en inglés antes de buscar evita ese ruido.
+const ANATOMY_ES_EN: Record<string, string> = {
+  "esqueleto": "human skeleton",
+  "hueso": "human bone anatomy",
+  "huesos": "human bones anatomy",
+  "articulacion": "human joint anatomy",
+  "articulaciones": "human joints anatomy",
+  "ligamento": "ligament anatomy",
+  "ligamentos": "ligaments anatomy",
+  "musculo": "human muscle anatomy",
+  "musculos": "human muscles anatomy",
+  "musculo estriado": "skeletal muscle anatomy",
+  "musculo liso": "smooth muscle anatomy",
+  "sistema nervioso": "nervous system anatomy",
+  "sistema nervioso central": "central nervous system anatomy",
+  "sistema nervioso autonomo": "autonomic nervous system anatomy",
+  "sistema nervioso periferico": "peripheral nervous system anatomy",
+  "cerebro": "human brain anatomy",
+  "cerebelo": "cerebellum anatomy",
+  "medula espinal": "spinal cord anatomy",
+  "medula": "spinal cord anatomy",
+  "tronco encefalico": "brainstem anatomy",
+  "hemisferios cerebrales": "cerebral hemispheres anatomy",
+  "craneo": "human skull anatomy",
+  "cabeza": "human head anatomy",
+  "cuello": "human neck anatomy",
+  "torax": "human thorax anatomy",
+  "pared toracica": "thoracic wall anatomy",
+  "columna vertebral": "vertebral column anatomy",
+  "raquis": "vertebral column anatomy",
+  "cintura escapular": "shoulder girdle anatomy",
+  "cintura pelvica": "pelvic girdle anatomy",
+  "cintura pelviana": "pelvic girdle anatomy",
+  "hombro": "human shoulder anatomy",
+  "brazo": "human arm anatomy",
+  "antebrazo": "human forearm anatomy",
+  "codo": "human elbow anatomy",
+  "muñeca": "human wrist anatomy",
+  "mano": "human hand anatomy",
+  "cadera": "human hip anatomy",
+  "pierna": "human leg anatomy",
+  "muslo": "human thigh anatomy",
+  "rodilla": "human knee anatomy",
+  "tibia": "tibia bone anatomy",
+  "peroné": "fibula bone anatomy",
+  "pie": "human foot anatomy",
+  "tobillo": "human ankle anatomy",
+  "piel": "human skin anatomy",
+  "sangre": "human blood cells",
+  "corazon": "human heart anatomy",
+  "pulmon": "human lung anatomy",
+  "pulmones": "human lungs anatomy",
+  "sistema respiratorio": "respiratory system anatomy",
+  "sistema circulatorio": "circulatory system anatomy",
+  "arteria": "artery anatomy",
+  "vena": "vein anatomy",
+  "nervio": "nerve anatomy",
+  "sistema digestivo": "digestive system anatomy",
+  "estomago": "human stomach anatomy",
+  "higado": "human liver anatomy",
+  "intestino": "human intestine anatomy",
+  "pancreas": "human pancreas anatomy",
+  "riñon": "human kidney anatomy",
+  "riñones": "human kidneys anatomy",
+  "sistema urinario": "urinary system anatomy",
+  "vejiga": "urinary bladder anatomy",
+  "utero": "uterus anatomy",
+  "ovario": "human ovary anatomy",
+  "testiculo": "human testis anatomy",
+  "prostata": "prostate anatomy",
+  "genitales": "human genitalia anatomy",
+  "mamas": "human breast anatomy",
+  "celula": "human cell diagram",
+  "tejido": "human tissue diagram",
+  "sistema endocrino": "endocrine system anatomy",
+  "glandula": "gland anatomy",
+  "fosas nasales": "nasal cavity anatomy",
+  "senos paranasales": "paranasal sinuses anatomy"
+};
+
+const COMBINING_DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
+
+function normalizeEs(s: string) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(COMBINING_DIACRITICS_RE, "")
+    .trim();
+}
+
+function translateAnatomyTerm(term: string) {
+  const norm = normalizeEs(term);
+  return ANATOMY_ES_EN[norm] || null;
+}
+
 async function imagesForTerm(term: string, limit: number) {
+  const searchTerm = translateAnatomyTerm(term) || term;
   const half = Math.max(2, Math.ceil(limit / 2));
   const [wiki, openi] = await Promise.all([
-    searchCommonsImages(term, half),
-    searchOpenIImages(term, half)
+    searchCommonsImages(searchTerm, half),
+    searchOpenIImages(searchTerm, half)
   ]);
   const merged: any[] = [];
   const maxLen = Math.max(wiki.length, openi.length);
@@ -1146,7 +1253,8 @@ Deno.serve(async (req:Request)=>{
       const mode=body.mode==="questions"?"questions":"summary";
       const syllabusText=String(body.syllabusText||"").slice(0,20000);
       const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty};
-      return json({ok:true,mode,...await generateFromSyllabus(user,mode,syllabusText,examOptions)});
+      const force=!!body.force;
+      return json({ok:true,mode,...await generateFromSyllabus(user,mode,syllabusText,examOptions,force)});
     }
     if(action==="listSyllabusGenerations"){
       return json({ok:true,items:await listSyllabusGenerations()});

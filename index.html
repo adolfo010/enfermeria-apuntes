@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.8.6";
+  var APP_VERSION = "0.8.7";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2309,6 +2309,7 @@
       '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;">'+
         '<button type="button" id="temarioSummaryBtn">Generar resumen con IA ✨</button>'+
         '<button type="button" class="ghost" id="temarioExamBtn">Generar examen con IA 📝</button>'+
+        '<button type="button" class="ghost" id="temarioForceRegenerateBtn" title="Ignora el caché y genera un nuevo resumen, útil cuando el resumen guardado está incompleto">Regenerar (ignorar caché) 🔄</button>'+
         '<button type="button" class="ghost" id="temarioNewBtn">Nuevo eje temático 🆕</button>'+
       '</div>'+
       '<div id="temarioResult" style="margin-top:18px;"></div>'+
@@ -2317,6 +2318,7 @@
 
     document.getElementById("temarioSummaryBtn").addEventListener("click",function(){ runTemarioGeneration("summary"); });
     document.getElementById("temarioExamBtn").addEventListener("click",function(){ runTemarioGeneration("questions"); });
+    document.getElementById("temarioForceRegenerateBtn").addEventListener("click",function(){ runTemarioGeneration("summary",true); });
     document.getElementById("temarioNewBtn").addEventListener("click",function(){
       document.getElementById("temarioInput").value="";
       document.getElementById("temarioReselectSelect").value="";
@@ -2529,15 +2531,18 @@
     });
   }
 
-  function runTemarioGeneration(mode){
+  function runTemarioGeneration(mode,force){
     var syllabusText=(document.getElementById("temarioInput").value||"").trim();
     if(!syllabusText){ alert("Pegá primero el eje temático con sus ítems."); return; }
-    var btn=document.getElementById(mode==="summary"?"temarioSummaryBtn":"temarioExamBtn");
+    var forceRegen=!!force;
+    var btnId=forceRegen?"temarioForceRegenerateBtn":(mode==="summary"?"temarioSummaryBtn":"temarioExamBtn");
+    var btn=document.getElementById(btnId);
     var result=document.getElementById("temarioResult");
     var showAnswers=mode==="questions"?!!document.getElementById("temarioExamAnswers").checked:true;
-    btn.disabled=true; btn.textContent=mode==="summary"?"Buscando material y generando resumen…":"Buscando material y generando examen…";
-    result.innerHTML='<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Buscando en toda la base de conocimiento el material de cada ítem del eje…</div>';
+    btn.disabled=true; btn.textContent=forceRegen?"Regenerando (ignorando caché)…":(mode==="summary"?"Buscando material y generando resumen…":"Buscando material y generando examen…");
+    result.innerHTML='<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; '+(forceRegen?"Regenerando resumen desde cero (ignorando caché)…":"Buscando en toda la base de conocimiento el material de cada ítem del eje…")+'</div>';
     var params={action:"generateFromSyllabus",mode:mode,syllabusText:syllabusText};
+    if(forceRegen) params.force=true;
     if(mode==="questions"){
       params.count=Number(document.getElementById("temarioExamCount").value||10);
       params.examType=document.getElementById("temarioExamType").value||"Mixto";
@@ -2550,7 +2555,7 @@
     }).catch(function(err){
       result.innerHTML='<div class="banner danger">No se pudo generar ('+escapeHtml(err.message||"error")+').</div>';
     }).finally(function(){
-      btn.disabled=false; btn.textContent=mode==="summary"?"Generar resumen con IA ✨":"Generar examen con IA 📝";
+      btn.disabled=false; btn.textContent=forceRegen?"Regenerar (ignorar caché) 🔄":(mode==="summary"?"Generar resumen con IA ✨":"Generar examen con IA 📝");
     });
   }
 
