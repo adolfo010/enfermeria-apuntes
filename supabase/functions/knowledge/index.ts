@@ -356,7 +356,90 @@ async function gatherSyllabusFragments(itemLabels: string[]) {
   return { byItem, orderedIds };
 }
 
+async function sha256Hex(input: string) {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function syllabusCacheKey(syllabusText: string, mode: string, examOptions: any) {
+  const norm = syllabusText.trim().toLowerCase().replace(/\s+/g, " ");
+  const optionsKey = mode === "questions"
+    ? `${Number(examOptions?.count) || 10}|${(cleanText(examOptions?.examType, 80) || "Mixto").toLowerCase()}|${Number(examOptions?.difficulty) || 3}`
+    : "";
+  return `${mode}|${optionsKey}|${norm}`;
+}
+
 async function generateFromSyllabus(user: any, mode: string, syllabusText: string, examOptions: any = {}) {
+  const hash = await sha256Hex(syllabusCacheKey(syllabusText, mode, examOptions));
+
+  const found = await rest(`knowledge_syllabus_generations?syllabus_hash=eq.${hash}&select=*&limit=1`);
+  if (found.ok) {
+    const rows = await found.json();
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (row) {
+      rest(`knowledge_syllabus_generations?id=eq.${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ last_used_at: new Date().toISOString(), use_count: (row.use_count || 1) + 1 })
+      }).catch(() => {});
+      return {
+        summary: row.summary ?? undefined,
+        questions: row.questions ?? undefined,
+        topic: row.topic,
+        itemsCovered: row.items_covered || [],
+        sources: row.sources || [],
+        fromCache: true,
+        generationId: row.id
+      };
+    }
+  }
+
+  const result = await generateFromSyllabusCore(user, mode, syllabusText, examOptions);
+
+  rest("knowledge_syllabus_generations", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      syllabus_hash: hash,
+      mode,
+      topic: result.topic,
+      syllabus_text: syllabusText,
+      exam_options: mode === "questions" ? examOptions : null,
+      summary: mode === "summary" ? (result as any).summary : null,
+      questions: mode === "questions" ? (result as any).questions : null,
+      items_covered: result.itemsCovered,
+      sources: result.sources,
+      created_by: user?.email ?? null
+    })
+  }).catch(() => {});
+
+  return { ...result, fromCache: false };
+}
+
+async function listSyllabusGenerations() {
+  const r = await rest(`knowledge_syllabus_generations?select=id,mode,topic,items_covered,created_at,last_used_at,use_count&order=last_used_at.desc&limit=50`);
+  if (!r.ok) throw new Error("SYLLABUS_LIST_FAILED");
+  return await r.json();
+}
+
+async function getSyllabusGeneration(id: number) {
+  const r = await rest(`knowledge_syllabus_generations?id=eq.${id}&select=*&limit=1`);
+  if (!r.ok) throw new Error("SYLLABUS_GET_FAILED");
+  const rows = await r.json();
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) throw new Error("SYLLABUS_NOT_FOUND");
+  return {
+    summary: row.summary ?? undefined,
+    questions: row.questions ?? undefined,
+    topic: row.topic,
+    itemsCovered: row.items_covered || [],
+    sources: row.sources || [],
+    syllabusText: row.syllabus_text,
+    mode: row.mode
+  };
+}
+
+async function generateFromSyllabusCore(user: any, mode: string, syllabusText: string, examOptions: any = {}) {
   const items = parseSyllabusItems(syllabusText);
   if (!items.length) throw new Error("SYLLABUS_EMPTY");
   const topicTitle = cleanText(items[0], 200);
@@ -554,6 +637,14 @@ Deno.serve(async (req:Request)=>{
       const syllabusText=String(body.syllabusText||"").slice(0,20000);
       const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty};
       return json({ok:true,mode,...await generateFromSyllabus(user,mode,syllabusText,examOptions)});
+    }
+    if(action==="listSyllabusGenerations"){
+      return json({ok:true,items:await listSyllabusGenerations()});
+    }
+    if(action==="getSyllabusGeneration"){
+      const id=Number(body.id);
+      if(!Number.isFinite(id)) throw new Error("SYLLABUS_ID_REQUIRED");
+      return json({ok:true,...await getSyllabusGeneration(id)});
     }
     return json({error:"INVALID_ACTION"},400);
   } catch(e:any) {

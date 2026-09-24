@@ -507,7 +507,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.6.0";
+  var APP_VERSION = "0.6.1";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2133,10 +2133,77 @@
         '<button type="button" id="temarioSummaryBtn">Generar resumen con IA ✨</button>'+
         '<button type="button" class="ghost" id="temarioExamBtn">Generar examen con IA 📝</button>'+
       '</div>'+
-      '<div id="temarioResult" style="margin-top:18px;"></div></div>';
+      '<div id="temarioResult" style="margin-top:18px;"></div>'+
+      '<div style="margin-top:28px;border-top:1px solid var(--border);padding-top:16px;"><h2>Generaciones guardadas</h2><div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Reabrí un resumen o examen ya generado sin gastar IA de nuevo. Si pedís exactamente el mismo eje con las mismas opciones, también se reutiliza automáticamente.</div><div id="temarioSavedList"></div></div>'+
+      '</div>';
 
     document.getElementById("temarioSummaryBtn").addEventListener("click",function(){ runTemarioGeneration("summary"); });
     document.getElementById("temarioExamBtn").addEventListener("click",function(){ runTemarioGeneration("questions"); });
+    renderTemarioSavedList();
+  }
+
+  function renderTemarioResult(payload, mode, showAnswers){
+    var result=document.getElementById("temarioResult");
+    var topic=payload.topic||"Eje temático";
+    var cacheNote=payload.fromCache?'<div class="banner info" style="margin-bottom:12px;">♻️ Recuperado de una generación anterior — no se volvió a consultar la IA.</div>':'';
+    if(mode==="summary"){
+      var summary=payload.summary||"";
+      if(!summary) throw new Error("La IA no devolvió un resumen.");
+      var itemsInfo=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
+      result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+'<div class="preview-title">Resumen del eje: '+escapeHtml(topic)+'</div>'+
+        '<div id="temarioSummaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
+        '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button></div>'+
+        '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
+      document.getElementById("readTemarioSummaryBtn").addEventListener("click",function(){openReader("Resumen: "+topic,topic,summary);});
+      document.getElementById("copyTemarioSummaryBtn").addEventListener("click",function(){copyToClipboard(summary);});
+      var sourceNames=(payload.sources||[]).map(function(s){return {name:s.fileName||s.title||"Fuente"};});
+      document.getElementById("downloadTemarioSummaryPdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,sourceNames,topic);});
+      document.getElementById("downloadTemarioSummaryWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,sourceNames,topic);});
+    } else {
+      var qs=payload.questions||[];
+      if(!qs.length) throw new Error("La IA no devolvió preguntas.");
+      var itemsInfo2=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
+      var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+(q.item?(' · '+escapeHtml(q.item)):'')+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div>'+((q.options||[]).length?('<ol class="question-options">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'):'')+'</div>';}).join("");
+      var answerKeyHtml=showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml(questionModelAnswerText(q))+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
+      result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+'<div class="preview-title">Examen del eje: '+escapeHtml(topic)+'</div><div class="preview-path">'+qs.length+' preguntas</div>'+
+        '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button></div>'+
+        questionsHtml+answerKeyHtml+
+        '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo2+'</div></details></div>';
+      document.getElementById("takeTemarioExamBtn").addEventListener("click",function(){openExamTake(qs,topic,[]);});
+      document.getElementById("downloadTemarioExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,topic);});
+      document.getElementById("downloadTemarioExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,topic);});
+    }
+  }
+
+  function renderTemarioSavedList(){
+    var wrap=document.getElementById("temarioSavedList");
+    if(!wrap) return;
+    wrap.innerHTML='<div style="font-size:13px;color:var(--muted);">Cargando generaciones guardadas…</div>';
+    callKnowledge({action:"listSyllabusGenerations"}).then(function(payload){
+      var items=payload.items||[];
+      if(!items.length){ wrap.innerHTML='<div style="font-size:13px;color:var(--muted);">Todavía no hay ejes generados guardados.</div>'; return; }
+      wrap.innerHTML=items.map(function(it){
+        var date=it.created_at?new Date(it.created_at).toLocaleDateString():"";
+        var modeLabel=it.mode==="summary"?"Resumen":"Examen";
+        var itemCount=(it.items_covered||[]).length;
+        return '<div class="question-card" style="cursor:pointer;" data-syllabus-id="'+it.id+'"><div class="q-number">'+modeLabel+' · '+date+' · usado '+(it.use_count||1)+' vez/veces</div><div class="q-text" style="font-weight:500;">'+escapeHtml(it.topic)+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">'+itemCount+' ítem(s) del eje</div></div>';
+      }).join("");
+      Array.prototype.forEach.call(wrap.querySelectorAll("[data-syllabus-id]"), function(card){
+        card.addEventListener("click", function(){ openSavedTemario(Number(card.getAttribute("data-syllabus-id"))); });
+      });
+    }).catch(function(err){
+      wrap.innerHTML='<div class="banner danger">No se pudo cargar el historial ('+escapeHtml(err.message||"error")+').</div>';
+    });
+  }
+
+  function openSavedTemario(id){
+    var result=document.getElementById("temarioResult");
+    result.innerHTML='<div class="banner info"><span class="spin"></span>&nbsp; Abriendo generación guardada…</div>';
+    callKnowledge({action:"getSyllabusGeneration",id:id}).then(function(payload){
+      renderTemarioResult(payload, payload.mode, true);
+    }).catch(function(err){
+      result.innerHTML='<div class="banner danger">No se pudo abrir ('+escapeHtml(err.message||"error")+').</div>';
+    });
   }
 
   function runTemarioGeneration(mode){
@@ -2144,6 +2211,7 @@
     if(!syllabusText){ alert("Pegá primero el eje temático con sus ítems."); return; }
     var btn=document.getElementById(mode==="summary"?"temarioSummaryBtn":"temarioExamBtn");
     var result=document.getElementById("temarioResult");
+    var showAnswers=mode==="questions"?!!document.getElementById("temarioExamAnswers").checked:true;
     btn.disabled=true; btn.textContent=mode==="summary"?"Buscando material y generando resumen…":"Buscando material y generando examen…";
     result.innerHTML='<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Buscando en toda la base de conocimiento el material de cada ítem del eje…</div>';
     var params={action:"generateFromSyllabus",mode:mode,syllabusText:syllabusText};
@@ -2151,37 +2219,10 @@
       params.count=Number(document.getElementById("temarioExamCount").value||10);
       params.examType=document.getElementById("temarioExamType").value||"Mixto";
       params.difficulty=Number(document.getElementById("temarioExamDifficulty").value||3);
-      params.showAnswers=!!document.getElementById("temarioExamAnswers").checked;
     }
     callKnowledge(params).then(function(payload){
-      var topic=payload.topic||"Eje temático";
-      if(mode==="summary"){
-        var summary=payload.summary||"";
-        if(!summary) throw new Error("La IA no devolvió un resumen.");
-        var itemsInfo=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
-        result.innerHTML='<div class="panel" style="padding:22px 26px;"><div class="preview-title">Resumen del eje: '+escapeHtml(topic)+'</div>'+
-          '<div id="temarioSummaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
-          '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button></div>'+
-          '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
-        document.getElementById("readTemarioSummaryBtn").addEventListener("click",function(){openReader("Resumen: "+topic,topic,summary);});
-        document.getElementById("copyTemarioSummaryBtn").addEventListener("click",function(){copyToClipboard(summary);});
-        var sourceNames=(payload.sources||[]).map(function(s){return {name:s.fileName||s.title||"Fuente"};});
-        document.getElementById("downloadTemarioSummaryPdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,sourceNames,topic);});
-        document.getElementById("downloadTemarioSummaryWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,sourceNames,topic);});
-      } else {
-        var qs=payload.questions||[];
-        if(!qs.length) throw new Error("La IA no devolvió preguntas.");
-        var itemsInfo=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
-        var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+(q.item?(' · '+escapeHtml(q.item)):'')+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div>'+((q.options||[]).length?('<ol class="question-options">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'):'')+'</div>';}).join("");
-        var answerKeyHtml=params.showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml(questionModelAnswerText(q))+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
-        result.innerHTML='<div class="panel" style="padding:22px 26px;"><div class="preview-title">Examen del eje: '+escapeHtml(topic)+'</div><div class="preview-path">'+qs.length+' preguntas</div>'+
-          '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button></div>'+
-          questionsHtml+answerKeyHtml+
-          '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
-        document.getElementById("takeTemarioExamBtn").addEventListener("click",function(){openExamTake(qs,topic,[]);});
-        document.getElementById("downloadTemarioExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,topic);});
-        document.getElementById("downloadTemarioExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,topic);});
-      }
+      renderTemarioResult(payload, mode, showAnswers);
+      renderTemarioSavedList();
     }).catch(function(err){
       result.innerHTML='<div class="banner danger">No se pudo generar ('+escapeHtml(err.message||"error")+').</div>';
     }).finally(function(){
