@@ -213,8 +213,8 @@ async function search(term: string) {
   return { term, count:rows.length, groups:items };
 }
 
-async function loadFragments(ids:number[]) {
-  const clean=[...new Set(ids.map(Number).filter(Number.isFinite))].slice(0,40);
+async function loadFragments(ids:number[], maxCount=40) {
+  const clean=[...new Set(ids.map(Number).filter(Number.isFinite))].slice(0,maxCount);
   if (!clean.length) throw new Error("NO_FRAGMENTS_SELECTED");
   const filter=clean.join(",");
   const r=await rest(`knowledge_fragments?id=in.(${filter})&select=id,document_id,page_start,page_end,pagina_impresa_inicio,pagina_impresa_fin,titulo,ruta,tipo_contenido,content&order=id.asc`);
@@ -290,6 +290,142 @@ Devolvé SOLO JSON válido con esta forma exacta: {"questions":[{"question":"...
   try { parsed=JSON.parse(r.text.replace(/^\`\`\`json\s*/i,"").replace(/\s*\`\`\`$/,"")); }
   catch { throw new Error("INVALID_QUESTIONS_JSON"); }
   return {questions:Array.isArray(parsed?.questions)?parsed.questions:[],sources:selected.map(sourceMeta)};
+}
+
+function parseSyllabusItems(raw: string) {
+  const lines = String(raw||"").split(/\r?\n/);
+  const items: string[] = [];
+  for (const line of lines) {
+    const cleaned = line
+      .replace(/^[\s•·\-–—•✓√●◦‣\*\d\.\)]+/, "")
+      .trim();
+    if (cleaned.length < 3) continue;
+    items.push(cleaned.slice(0, 400));
+  }
+  return items.slice(0, 20);
+}
+
+async function rawSearchFragments(term: string, limitCount: number) {
+  const r = await rest("rpc/knowledge_search_fragments", {
+    method: "POST",
+    body: JSON.stringify({ term, limit_count: limitCount })
+  });
+  if (!r.ok) return [];
+  return await r.json();
+}
+
+function splitIntoSubterms(label: string) {
+  const parts = label.split(/[.:;]/).map(s => s.trim()).filter(s => s.length >= 3);
+  return (parts.length ? parts : [label]).slice(0, 6);
+}
+
+async function gatherSyllabusFragments(itemLabels: string[]) {
+  const perItemLimit = 5;
+  const perSubtermCandidates = 10;
+  const byItem: { item: string; fragmentIds: number[] }[] = [];
+  for (const label of itemLabels) {
+    const subterms = splitIntoSubterms(label);
+    const bestScore = new Map<number, number>();
+    for (const sub of subterms) {
+      const rows = await rawSearchFragments(sub, perSubtermCandidates);
+      for (const row of (Array.isArray(rows) ? rows : [])) {
+        const id = Number(row.id);
+        if (!Number.isFinite(id)) continue;
+        const score = Number(row.score) || 0;
+        if (!bestScore.has(id) || score > (bestScore.get(id) as number)) bestScore.set(id, score);
+      }
+    }
+    const ids = [...bestScore.entries()].sort((a, b) => b[1] - a[1]).slice(0, perItemLimit).map(e => e[0]);
+    byItem.push({ item: label, fragmentIds: ids });
+  }
+  const seen = new Set<number>();
+  const orderedIds: number[] = [];
+  let more = true;
+  let round = 0;
+  while (more && orderedIds.length < 60) {
+    more = false;
+    for (const entry of byItem) {
+      const id = entry.fragmentIds[round];
+      if (id != null) {
+        more = true;
+        if (!seen.has(id)) { seen.add(id); orderedIds.push(id); }
+      }
+    }
+    round++;
+  }
+  return { byItem, orderedIds };
+}
+
+async function generateFromSyllabus(user: any, mode: string, syllabusText: string, examOptions: any = {}) {
+  const items = parseSyllabusItems(syllabusText);
+  if (!items.length) throw new Error("SYLLABUS_EMPTY");
+  const topicTitle = cleanText(items[0], 200);
+
+  const { byItem, orderedIds } = await gatherSyllabusFragments(items);
+  if (!orderedIds.length) throw new Error("NO_MATCHING_MATERIAL");
+
+  const fragments = await loadFragments(orderedIds, 60);
+  const fragmentMap = new Map(fragments.map((f: any) => [Number(f.id), f]));
+
+  let chars = 0;
+  const blocks: string[] = [];
+  const itemsCovered: { item: string; fragmentCount: number }[] = [];
+  for (const entry of byItem) {
+    const frags = entry.fragmentIds.map((id: number) => fragmentMap.get(id)).filter(Boolean);
+    let usedCount = 0;
+    const parts: string[] = [];
+    for (const f of frags) {
+      const n = String((f as any).content || "").length;
+      if (chars + n > 140000) continue;
+      chars += n;
+      parts.push(sourceText(f));
+      usedCount++;
+    }
+    itemsCovered.push({ item: entry.item, fragmentCount: usedCount });
+    if (parts.length) {
+      blocks.push(`=== ÍTEM DEL EJE: ${entry.item} ===\n${parts.join("\n\n")}`);
+    }
+  }
+  const source = blocks.join("\n\n---\n\n");
+  if (!source) throw new Error("NO_MATCHING_MATERIAL");
+
+  if (mode === "summary") {
+    const prompt = `Sos un asistente académico para Licenciatura en Enfermería. Prepará apuntes de estudio para el eje temático "${topicTitle}" usando EXCLUSIVAMENTE las fuentes proporcionadas, que ya vienen agrupadas por ítem del eje (marcadas con "=== ÍTEM DEL EJE: ... ==="). Para cada ítem que tenga fuentes, escribí una sección propia con el título EXACTO del ítem como encabezado (formato "## <título del ítem>"), desarrollando el contenido en tus propias palabras a partir de las fuentes. No agregues conocimiento externo ni completes datos faltantes. Cada afirmación importante debe indicar su fuente y página entre paréntesis. Si un ítem no tiene fuentes en el material provisto, escribí su encabezado igual y anotá "Sin material disponible en la base para este ítem." en vez de inventar contenido. No repitas texto idéntico entre secciones si el mismo contenido aplica a varios ítems: elegí la sección más específica.\n\nFUENTES POR ÍTEM:\n${source}`;
+    const r = await callOpenAI(prompt, 12000);
+    await recordUsage(user, "knowledgeSyllabusSummary", topicTitle, r.raw, fragments);
+    return { summary: r.text, topic: topicTitle, itemsCovered, sources: fragments.map(sourceMeta) };
+  }
+
+  const itemsWithMaterial = itemsCovered.filter(it => it.fragmentCount > 0);
+  const totalCount = Math.max(1, Math.min(30, Number(examOptions.count) || 10));
+  const n = Math.max(1, itemsWithMaterial.length);
+  const base = Math.floor(totalCount / n);
+  const remainder = totalCount - base * n;
+  const distribution = itemsWithMaterial.map((it, i) => ({ item: it.item, count: base + (i < remainder ? 1 : 0) }));
+  const distributionText = distribution.map(d => `- "${d.item}": ${d.count} pregunta(s)`).join("\n");
+  const examType = cleanText(examOptions.examType, 80) || "Mixto";
+  const difficulty = Math.max(1, Math.min(5, Number(examOptions.difficulty) || 3));
+
+  const prompt = `Generá exactamente ${totalCount} preguntas de examen para el eje temático "${topicTitle}" usando EXCLUSIVAMENTE las fuentes proporcionadas, agrupadas por ítem del eje (marcadas con "=== ÍTEM DEL EJE: ... ==="). Tipo solicitado: ${examType}. Dificultad: ${difficulty}/5. No inventes datos. Evitá preguntas redundantes.
+
+Repartí las preguntas por ítem según esta distribución (respetala lo más posible):
+${distributionText}
+
+Cada pregunta debe incluir el campo "item" con el texto EXACTO del ítem al que corresponde (de la lista de arriba).
+
+Reglas por tipo de pregunta (respetalas estrictamente, NO conviertas todo a opción múltiple):
+- "Opción múltiple": options debe tener exactamente 4 alternativas, y answer el índice (0-3) de la correcta. correctAnswer va vacío ("").
+- "Verdadero/Falso": options debe ser exactamente ["Verdadero","Falso"], y answer el índice (0 o 1) de la correcta. correctAnswer va vacío ("").
+- "Respuesta corta", "Desarrollo" o "Caso clínico": options debe ser un arreglo VACÍO [], answer debe ser null, y correctAnswer debe tener la respuesta modelo completa esperada (no una opción, sino la respuesta real en texto).
+- Si el tipo solicitado es "Mixto", elegí para cada pregunta un type de los de arriba (variá entre opción múltiple, verdadero/falso y preguntas abiertas) y aplicá la regla que corresponda a ese type.
+
+Devolvé SOLO JSON válido con esta forma exacta: {"questions":[{"question":"...","type":"...","item":"...","options":[],"answer":null,"correctAnswer":"...","source":"..."}]}\n\nFUENTES POR ÍTEM:\n${source}`;
+  const r = await callOpenAI(prompt, 12000);
+  await recordUsage(user, "knowledgeSyllabusQuestions", topicTitle, r.raw, fragments);
+  let parsed: any;
+  try { parsed = JSON.parse(r.text.replace(/^\`\`\`json\s*/i, "").replace(/\s*\`\`\`$/, "")); }
+  catch { throw new Error("INVALID_QUESTIONS_JSON"); }
+  return { questions: Array.isArray(parsed?.questions) ? parsed.questions : [], topic: topicTitle, itemsCovered, sources: fragments.map(sourceMeta) };
 }
 
 async function gradeAnswers(user:any, topic:string, items:any[]) {
@@ -412,6 +548,12 @@ Deno.serve(async (req:Request)=>{
       const topic=cleanText(body.topic,300);
       const items=Array.isArray(body.items)?body.items:[];
       return json({ok:true,...await gradeAnswers(user,topic,items)});
+    }
+    if(action==="generateFromSyllabus"){
+      const mode=body.mode==="questions"?"questions":"summary";
+      const syllabusText=String(body.syllabusText||"").slice(0,20000);
+      const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty};
+      return json({ok:true,mode,...await generateFromSyllabus(user,mode,syllabusText,examOptions)});
     }
     return json({error:"INVALID_ACTION"},400);
   } catch(e:any) {

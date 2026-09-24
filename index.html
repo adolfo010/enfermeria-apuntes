@@ -396,6 +396,7 @@
         <button type="button" class="nav-item" data-section="resumen">✨ Resumen</button>
         <button type="button" class="nav-item" data-section="examen">📝 Examen</button>
         <button type="button" class="nav-item" data-section="preguntas">💬 Preguntas</button>
+        <button type="button" class="nav-item" data-section="temario">📚 Desde un temario</button>
       </div>
     </nav>
 
@@ -460,6 +461,10 @@
       <section class="app-section" data-section-panel="preguntas" hidden>
         <div id="preguntasSectionBody"></div>
       </section>
+
+      <section class="app-section" data-section-panel="temario" hidden style="width:100%;">
+        <div id="temarioSectionBody" style="width:100%;min-height:65vh;"></div>
+      </section>
     </main>
   </div>
 
@@ -502,7 +507,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.5.1";
+  var APP_VERSION = "0.6.0";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1653,6 +1658,7 @@
     else if (name === "resumen") renderResumenSection();
     else if (name === "examen") renderExamenSection();
     else if (name === "preguntas") renderPreguntasSection();
+    else if (name === "temario") renderTemarioSection();
   }
 
   Array.prototype.forEach.call(document.querySelectorAll(".nav-item[data-section]"), function(btn){
@@ -2111,6 +2117,77 @@
     document.getElementById("knowledgeQuestionInput").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();ask();}});
   }
 
+  function renderTemarioSection(){
+    var body=document.getElementById("temarioSectionBody");
+    body.innerHTML='<div class="panel" style="width:100%;padding:28px 34px;">'+
+      '<h2>Generar a partir de un eje temático</h2>'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Pegá acá el título y los ítems de UN eje temático (como te lo da la cátedra). El sistema busca solo, en toda la base, el material de cada ítem — no hace falta seleccionar archivos ni fragmentos. Para temarios largos, cargá un eje por vez.</div>'+
+      '<textarea id="temarioInput" placeholder="Ejemplo:&#10;EJE TEMÁTICO N° 2: ESQUELETO AXIAL (cabeza-cara-cuello-raquis-tórax)&#10;Cabeza: Esqueleto. Huesos. Divisiones. Orificios de la base del cráneo. Puntos del cráneo. El hueso temporal: función. Descripción general.&#10;Regiones. Órbitas. Definición. Contenido. Relaciones.&#10;Cuello: morfología. División. Esqueleto. Vísceras del cuello. Arterias. Venas. Músculos. Nervios." style="width:100%;min-height:220px;padding:12px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical;"></textarea>'+
+      '<div class="exam-controls" style="margin-top:16px;">'+
+        '<div><label for="temarioExamCount">Cantidad de preguntas</label><select id="temarioExamCount"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></div>'+
+        '<div><label for="temarioExamType">Tipo</label><select id="temarioExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>'+
+        '<div><label for="temarioExamDifficulty">Dificultad</label><select id="temarioExamDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>'+
+        '<label style="grid-column:1/-1;display:flex;gap:7px;align-items:center;font-weight:500;"><input type="checkbox" id="temarioExamAnswers" checked> Mostrar respuestas y explicación (solo aplica al examen)</label>'+
+      '</div>'+
+      '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;">'+
+        '<button type="button" id="temarioSummaryBtn">Generar resumen con IA ✨</button>'+
+        '<button type="button" class="ghost" id="temarioExamBtn">Generar examen con IA 📝</button>'+
+      '</div>'+
+      '<div id="temarioResult" style="margin-top:18px;"></div></div>';
+
+    document.getElementById("temarioSummaryBtn").addEventListener("click",function(){ runTemarioGeneration("summary"); });
+    document.getElementById("temarioExamBtn").addEventListener("click",function(){ runTemarioGeneration("questions"); });
+  }
+
+  function runTemarioGeneration(mode){
+    var syllabusText=(document.getElementById("temarioInput").value||"").trim();
+    if(!syllabusText){ alert("Pegá primero el eje temático con sus ítems."); return; }
+    var btn=document.getElementById(mode==="summary"?"temarioSummaryBtn":"temarioExamBtn");
+    var result=document.getElementById("temarioResult");
+    btn.disabled=true; btn.textContent=mode==="summary"?"Buscando material y generando resumen…":"Buscando material y generando examen…";
+    result.innerHTML='<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Buscando en toda la base de conocimiento el material de cada ítem del eje…</div>';
+    var params={action:"generateFromSyllabus",mode:mode,syllabusText:syllabusText};
+    if(mode==="questions"){
+      params.count=Number(document.getElementById("temarioExamCount").value||10);
+      params.examType=document.getElementById("temarioExamType").value||"Mixto";
+      params.difficulty=Number(document.getElementById("temarioExamDifficulty").value||3);
+      params.showAnswers=!!document.getElementById("temarioExamAnswers").checked;
+    }
+    callKnowledge(params).then(function(payload){
+      var topic=payload.topic||"Eje temático";
+      if(mode==="summary"){
+        var summary=payload.summary||"";
+        if(!summary) throw new Error("La IA no devolvió un resumen.");
+        var itemsInfo=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
+        result.innerHTML='<div class="panel" style="padding:22px 26px;"><div class="preview-title">Resumen del eje: '+escapeHtml(topic)+'</div>'+
+          '<div id="temarioSummaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
+          '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button></div>'+
+          '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
+        document.getElementById("readTemarioSummaryBtn").addEventListener("click",function(){openReader("Resumen: "+topic,topic,summary);});
+        document.getElementById("copyTemarioSummaryBtn").addEventListener("click",function(){copyToClipboard(summary);});
+        var sourceNames=(payload.sources||[]).map(function(s){return {name:s.fileName||s.title||"Fuente"};});
+        document.getElementById("downloadTemarioSummaryPdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,sourceNames,topic);});
+        document.getElementById("downloadTemarioSummaryWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,sourceNames,topic);});
+      } else {
+        var qs=payload.questions||[];
+        if(!qs.length) throw new Error("La IA no devolvió preguntas.");
+        var itemsInfo=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
+        var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+(q.item?(' · '+escapeHtml(q.item)):'')+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div>'+((q.options||[]).length?('<ol class="question-options">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'):'')+'</div>';}).join("");
+        var answerKeyHtml=params.showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml(questionModelAnswerText(q))+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
+        result.innerHTML='<div class="panel" style="padding:22px 26px;"><div class="preview-title">Examen del eje: '+escapeHtml(topic)+'</div><div class="preview-path">'+qs.length+' preguntas</div>'+
+          '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button></div>'+
+          questionsHtml+answerKeyHtml+
+          '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
+        document.getElementById("takeTemarioExamBtn").addEventListener("click",function(){openExamTake(qs,topic,[]);});
+        document.getElementById("downloadTemarioExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,topic);});
+        document.getElementById("downloadTemarioExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,topic);});
+      }
+    }).catch(function(err){
+      result.innerHTML='<div class="banner danger">No se pudo generar ('+escapeHtml(err.message||"error")+').</div>';
+    }).finally(function(){
+      btn.disabled=false; btn.textContent=mode==="summary"?"Generar resumen con IA ✨":"Generar examen con IA 📝";
+    });
+  }
 
   function generateSummary(chosen, topic, targetEl, summaryLevel, technicalLevel){
     var target = targetEl || els.preview;
