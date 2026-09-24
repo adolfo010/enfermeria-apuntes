@@ -68,3 +68,31 @@ def test_non_transient_ai_error_status() -> None:
         status_code = 400
 
     assert is_transient_ai_error(FakeError("invalid argument")) is False
+
+
+# ---------------------------------------------------------------------------
+# PRUEBAS DE EXTRACCIÓN NATIVA DE FIGURAS
+# ---------------------------------------------------------------------------
+
+import fitz
+
+from worker import extract_page_figures, figure_bbox_string
+
+
+def test_figure_bbox_format_is_stable() -> None:
+    assert figure_bbox_string((1, 2, 300.5, 400.75)) == "1.00,2.00,300.50,400.75"
+
+
+def test_page_without_images_returns_no_figures() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf = Path(tmp) / "empty.pdf"
+        doc = fitz.open()
+        doc.new_page(width=612, height=792)
+        doc.save(pdf)
+        doc.close()
+
+        opened = fitz.open(pdf)
+        try:
+            assert extract_page_figures(opened[0], 1) == []
+        finally:
+            opened.close()
