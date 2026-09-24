@@ -372,23 +372,88 @@ function splitIntoSubterms(label: string) {
   return (parts.length ? parts : [label]).slice(0, 6);
 }
 
+const PRIORITY_SOURCE_MATCH = /latarjet/i;
+
+function isPrioritySource(documentTitle: string, fileName: string) {
+  return PRIORITY_SOURCE_MATCH.test(documentTitle || "") || PRIORITY_SOURCE_MATCH.test(fileName || "");
+}
+
 async function gatherSyllabusFragments(itemLabels: string[]) {
-  const perItemLimit = 5;
-  const perSubtermCandidates = 10;
+  const perItemLimit = 6;
+  const priorityReserved = 2;
+  const perSubtermCandidates = 12;
+  // Los fragmentos de la fuente prioritaria (Latarjet) suelen rankear muy por
+  // debajo de resúmenes cortos que matchean el título/ruta con el término
+  // buscado (esos reciben un bonus de score en knowledge_search_fragments).
+  // Sin esta segunda búsqueda más amplia, Latarjet directamente no entraría
+  // al pool de candidatos y la reserva de prioridad de abajo no tendría nada
+  // para elegir.
+  const prioritySearchLimit = 200;
   const byItem: { item: string; fragmentIds: number[] }[] = [];
   for (const label of itemLabels) {
     const subterms = splitIntoSubterms(label);
-    const bestScore = new Map<number, number>();
+    const best = new Map<number, { score: number; documentId: number; priority: boolean }>();
     for (const sub of subterms) {
-      const rows = await rawSearchFragments(sub, perSubtermCandidates);
-      for (const row of (Array.isArray(rows) ? rows : [])) {
+      const [rows, priorityRows] = await Promise.all([
+        rawSearchFragments(sub, perSubtermCandidates),
+        rawSearchFragments(sub, prioritySearchLimit)
+      ]);
+      const combined = [
+        ...(Array.isArray(rows) ? rows : []),
+        ...(Array.isArray(priorityRows) ? priorityRows : []).filter((row: any) =>
+          isPrioritySource(String(row.document_title || ""), String(row.file_name || ""))
+        )
+      ];
+      for (const row of combined) {
         const id = Number(row.id);
         if (!Number.isFinite(id)) continue;
         const score = Number(row.score) || 0;
-        if (!bestScore.has(id) || score > (bestScore.get(id) as number)) bestScore.set(id, score);
+        const prev = best.get(id);
+        if (!prev || score > prev.score) {
+          best.set(id, {
+            score,
+            documentId: Number(row.document_id),
+            priority: isPrioritySource(String(row.document_title || ""), String(row.file_name || ""))
+          });
+        }
       }
     }
-    const ids = [...bestScore.entries()].sort((a, b) => b[1] - a[1]).slice(0, perItemLimit).map(e => e[0]);
+
+    const candidates = [...best.entries()].map(([id, info]) => ({ id, ...info }));
+    candidates.sort((a, b) => b.score - a.score);
+
+    const ids: number[] = [];
+    const used = new Set<number>();
+
+    // Prioridad: reservamos los primeros lugares para la fuente prioritaria (Latarjet),
+    // si tiene fragmentos relevantes para este ítem.
+    for (const c of candidates) {
+      if (ids.length >= priorityReserved) break;
+      if (c.priority && !used.has(c.id)) { ids.push(c.id); used.add(c.id); }
+    }
+
+    // Resto de los lugares: round-robin por libro entre TODOS los candidatos restantes
+    // (incluida la fuente prioritaria), para que no lo acapare un solo libro.
+    const byDoc = new Map<number, typeof candidates>();
+    for (const c of candidates) {
+      if (used.has(c.id)) continue;
+      const arr = byDoc.get(c.documentId) || [];
+      arr.push(c);
+      byDoc.set(c.documentId, arr);
+    }
+    const docGroups = [...byDoc.values()];
+    let round = 0;
+    while (ids.length < perItemLimit) {
+      let addedThisRound = false;
+      for (const arr of docGroups) {
+        if (ids.length >= perItemLimit) break;
+        const c = arr[round];
+        if (c && !used.has(c.id)) { ids.push(c.id); used.add(c.id); addedThisRound = true; }
+      }
+      if (!addedThisRound) break;
+      round++;
+    }
+
     byItem.push({ item: label, fragmentIds: ids });
   }
   const seen = new Set<number>();
