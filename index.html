@@ -507,7 +507,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.6.1";
+  var APP_VERSION = "0.7.0";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1351,13 +1351,14 @@
      return q.correctAnswer || "";
    }
 
-   function openExamTake(qs, topic, chosen){
+   function openExamTake(qs, topic, chosen, generationId){
      if(!qs || !qs.length) return;
      var items=qs.map(function(q,i){
        var correctIndex=questionCorrectIndex(q);
        return {
          index:i,
          question:q.question||"",
+         item:q.item||"",
          options:Array.isArray(q.options)?q.options:[],
          kind:correctIndex>=0 ? "choice" : "open",
          correctIndex:correctIndex,
@@ -1367,12 +1368,62 @@
          userText:""
        };
      });
-     examTakeState={topic:topic||"", chosen:chosen||[], items:items, graded:false};
+     examTakeState={topic:topic||"", chosen:chosen||[], items:items, graded:false, qsOriginal:qs, generationId:generationId||null, attemptId:null};
      renderExamTakeForm();
      var modal=document.getElementById("examTakeModal");
      document.getElementById("examTakeTitle").textContent=topic ? "Rendir examen: "+topic : "Rendir examen";
      document.getElementById("examTakeMeta").textContent=items.length+" preguntas";
      modal.classList.add("open"); modal.setAttribute("aria-hidden","false");
+     resumeOrCreateAttempt();
+   }
+
+   function resumeOrCreateAttempt(){
+     var state=examTakeState;
+     var lookup = state.generationId
+       ? callKnowledge({action:"listExamAttempts", generationId:state.generationId, status:"in_progress"})
+       : Promise.resolve({items:[]});
+     lookup.then(function(payload){
+       var found=(payload.items||[])[0];
+       if(found){
+         return callKnowledge({action:"getExamAttempt", id:found.id}).then(function(att){
+           state.attemptId=att.id;
+           var answers=att.answers||{};
+           state.items.forEach(function(it){
+             var a=answers[String(it.index)];
+             if(!a) return;
+             if(it.kind==="choice" && typeof a.userIndex==="number") it.userIndex=a.userIndex;
+             if(it.kind==="open" && typeof a.userText==="string") it.userText=a.userText;
+           });
+           renderExamTakeForm();
+           var msg=document.getElementById("examTakeMsg");
+           if(msg) msg.textContent="↩️ Se recuperaron tus respuestas de un intento anterior sin terminar.";
+         });
+       }
+       return callKnowledge({
+         action:"saveExamAttempt",
+         topic:state.topic,
+         generationId:state.generationId,
+         questions:state.qsOriginal,
+         answers:{},
+         status:"in_progress"
+       }).then(function(res){ state.attemptId=res.id; });
+     }).catch(function(){ /* si falla el guardado en curso, el examen igual se puede rendir */ });
+   }
+
+   var examAutosaveTimer=null;
+   function scheduleExamAutosave(){
+     if(!examTakeState || !examTakeState.attemptId) return;
+     if(examAutosaveTimer) clearTimeout(examAutosaveTimer);
+     examAutosaveTimer=setTimeout(function(){
+       var state=examTakeState;
+       if(!state || !state.attemptId) return;
+       var answers={};
+       state.items.forEach(function(it){
+         if(it.kind==="choice" && it.userIndex!=null) answers[String(it.index)]={userIndex:it.userIndex};
+         else if(it.kind==="open" && it.userText) answers[String(it.index)]={userText:it.userText};
+       });
+       callKnowledge({action:"saveExamAttempt", id:state.attemptId, topic:state.topic, generationId:state.generationId, questions:state.qsOriginal, answers:answers, status:"in_progress"}).catch(function(){});
+     }, 700);
    }
 
    function closeExamTake(){
@@ -1384,19 +1435,34 @@
      var body=document.getElementById("examTakeBody");
      var html="";
      examTakeState.items.forEach(function(it){
-       html+='<div class="question-card"><div class="q-number">PREGUNTA '+(it.index+1)+'</div><div class="q-text">'+escapeHtml(it.question)+'</div>';
+       html+='<div class="question-card"><div class="q-number">PREGUNTA '+(it.index+1)+(it.item?(' · '+escapeHtml(it.item)):'')+'</div><div class="q-text">'+escapeHtml(it.question)+'</div>';
        if(it.kind==="choice"){
          html+='<div style="margin-top:9px;">'+it.options.map(function(o,oi){
-           return '<label class="exam-take-option"><input type="radio" name="examq_'+it.index+'" value="'+oi+'"> <span>'+String.fromCharCode(65+oi)+') '+escapeHtml(o)+'</span></label>';
+           var checked=it.userIndex===oi ? " checked" : "";
+           return '<label class="exam-take-option"><input type="radio" name="examq_'+it.index+'" value="'+oi+'"'+checked+'> <span>'+String.fromCharCode(65+oi)+') '+escapeHtml(o)+'</span></label>';
          }).join("")+'</div>';
        } else {
-         html+='<textarea class="exam-take-textarea" data-qindex="'+it.index+'" placeholder="Escribí tu respuesta…"></textarea>';
+         html+='<textarea class="exam-take-textarea" data-qindex="'+it.index+'" placeholder="Escribí tu respuesta…">'+escapeHtml(it.userText||"")+'</textarea>';
        }
        html+='</div>';
      });
      html+='<div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;"><button type="button" id="submitExamTakeBtn">Entregar examen ✓</button></div><div id="examTakeMsg" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>';
      body.innerHTML=html;
      document.getElementById("submitExamTakeBtn").addEventListener("click", submitExamTake);
+     body.onchange=function(e){
+       if(e.target && e.target.matches('input[type="radio"]')){
+         var idx=Number(e.target.name.replace("examq_",""));
+         var it=examTakeState.items[idx];
+         if(it){ it.userIndex=Number(e.target.value); scheduleExamAutosave(); }
+       }
+     };
+     body.oninput=function(e){
+       if(e.target && e.target.matches("textarea[data-qindex]")){
+         var idx=Number(e.target.getAttribute("data-qindex"));
+         var it=examTakeState.items[idx];
+         if(it){ it.userText=e.target.value; scheduleExamAutosave(); }
+       }
+     };
    }
 
    function submitExamTake(){
@@ -1476,6 +1542,20 @@
      document.getElementById("examTakeBody").innerHTML=html;
      document.getElementById("downloadExamResultPdfBtn").addEventListener("click", downloadExamResultPdf);
      document.getElementById("downloadExamResultWordBtn").addEventListener("click", downloadExamResultWord);
+
+     if(examTakeState.attemptId){
+       var graded=items.map(function(it){ return {score:examItemScore(it)}; });
+       var answers={};
+       items.forEach(function(it){
+         if(it.kind==="choice" && it.userIndex!=null) answers[String(it.index)]={userIndex:it.userIndex};
+         else if(it.kind==="open" && it.userText) answers[String(it.index)]={userText:it.userText};
+       });
+       callKnowledge({
+         action:"saveExamAttempt", id:examTakeState.attemptId, topic:examTakeState.topic,
+         generationId:examTakeState.generationId, questions:examTakeState.qsOriginal,
+         answers:answers, status:"completed", graded:graded, nota:nota
+       }).catch(function(){});
+     }
    }
 
    function buildExamResultText(){
@@ -2121,7 +2201,12 @@
     var body=document.getElementById("temarioSectionBody");
     body.innerHTML='<div class="panel" style="width:100%;padding:28px 34px;">'+
       '<h2>Generar a partir de un eje temático</h2>'+
-      '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Pegá acá el título y los ítems de UN eje temático (como te lo da la cátedra). El sistema busca solo, en toda la base, el material de cada ítem — no hace falta seleccionar archivos ni fragmentos. Para temarios largos, cargá un eje por vez.</div>'+
+      '<div style="margin-bottom:18px;">'+
+        '<label for="temarioReselectSelect" style="font-weight:600;font-size:13px;">Ejes temáticos ya cargados</label>'+
+        '<select id="temarioReselectSelect" style="width:100%;margin-top:6px;padding:9px 10px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);"><option value="">— Elegí uno para reeditarlo —</option></select>'+
+        '<div id="temarioReselectPreview" style="margin-top:8px;font-size:12.5px;color:var(--muted);white-space:pre-wrap;"></div>'+
+      '</div>'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Pegá acá el título y los ítems de UN eje temático (como te lo da la cátedra), o elegí uno de arriba para editarlo. El sistema busca solo, en toda la base, el material de cada ítem — no hace falta seleccionar archivos ni fragmentos. Para temarios largos, cargá un eje por vez.</div>'+
       '<textarea id="temarioInput" placeholder="Ejemplo:&#10;EJE TEMÁTICO N° 2: ESQUELETO AXIAL (cabeza-cara-cuello-raquis-tórax)&#10;Cabeza: Esqueleto. Huesos. Divisiones. Orificios de la base del cráneo. Puntos del cráneo. El hueso temporal: función. Descripción general.&#10;Regiones. Órbitas. Definición. Contenido. Relaciones.&#10;Cuello: morfología. División. Esqueleto. Vísceras del cuello. Arterias. Venas. Músculos. Nervios." style="width:100%;min-height:220px;padding:12px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical;"></textarea>'+
       '<div class="exam-controls" style="margin-top:16px;">'+
         '<div><label for="temarioExamCount">Cantidad de preguntas</label><select id="temarioExamCount"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></div>'+
@@ -2139,7 +2224,38 @@
 
     document.getElementById("temarioSummaryBtn").addEventListener("click",function(){ runTemarioGeneration("summary"); });
     document.getElementById("temarioExamBtn").addEventListener("click",function(){ runTemarioGeneration("questions"); });
+    document.getElementById("temarioReselectSelect").addEventListener("change",function(e){
+      var id=e.target.value;
+      var preview=document.getElementById("temarioReselectPreview");
+      if(!id){ preview.textContent=""; return; }
+      preview.textContent="Cargando…";
+      callKnowledge({action:"getSyllabusGeneration",id:Number(id)}).then(function(payload){
+        document.getElementById("temarioInput").value=payload.syllabusText||"";
+        var itemsPreview=(payload.itemsCovered||[]).map(function(it){return '• '+it.item;}).join("\n");
+        preview.textContent=itemsPreview;
+        document.getElementById("temarioInput").focus();
+      }).catch(function(err){
+        preview.textContent="No se pudo cargar ("+(err.message||"error")+").";
+      });
+    });
+    populateTemarioReselectSelect();
     renderTemarioSavedList();
+  }
+
+  function populateTemarioReselectSelect(){
+    var select=document.getElementById("temarioReselectSelect");
+    if(!select) return;
+    callKnowledge({action:"listSyllabusGenerations"}).then(function(payload){
+      var items=payload.items||[];
+      var seen={};
+      var html='<option value="">— Elegí uno para reeditarlo —</option>';
+      items.forEach(function(it){
+        if(seen[it.topic]) return;
+        seen[it.topic]=true;
+        html+='<option value="'+it.id+'">'+escapeHtml(it.topic)+'</option>';
+      });
+      select.innerHTML=html;
+    }).catch(function(){});
   }
 
   function renderTemarioResult(payload, mode, showAnswers){
@@ -2162,14 +2278,20 @@
     } else {
       var qs=payload.questions||[];
       if(!qs.length) throw new Error("La IA no devolvió preguntas.");
+      var genId=payload.generationId||null;
+      var reviewNote=payload.isReview?'<div class="banner info" style="margin-bottom:12px;">🎯 Examen de repaso: prioriza los ítems donde hubo más errores y evita repetir preguntas ya usadas.</div>':'';
       var itemsInfo2=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
       var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+(q.item?(' · '+escapeHtml(q.item)):'')+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div>'+((q.options||[]).length?('<ol class="question-options">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'):'')+'</div>';}).join("");
       var answerKeyHtml=showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml(questionModelAnswerText(q))+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
-      result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+'<div class="preview-title">Examen del eje: '+escapeHtml(topic)+'</div><div class="preview-path">'+qs.length+' preguntas</div>'+
-        '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button></div>'+
+      var reviewBtnHtml=genId?'<button type="button" class="ghost" id="reviewTemarioExamBtn">Repasar lo que fallé 🎯</button>':'';
+      result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+reviewNote+'<div class="preview-title">Examen del eje: '+escapeHtml(topic)+'</div><div class="preview-path">'+qs.length+' preguntas</div>'+
+        '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button>'+reviewBtnHtml+'</div>'+
         questionsHtml+answerKeyHtml+
         '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo2+'</div></details></div>';
-      document.getElementById("takeTemarioExamBtn").addEventListener("click",function(){openExamTake(qs,topic,[]);});
+      document.getElementById("takeTemarioExamBtn").addEventListener("click",function(){openExamTake(qs,topic,[],genId);});
+      if(genId){
+        document.getElementById("reviewTemarioExamBtn").addEventListener("click",function(){ runTemarioReview(genId); });
+      }
       document.getElementById("downloadTemarioExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,topic);});
       document.getElementById("downloadTemarioExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,topic);});
     }
@@ -2223,10 +2345,29 @@
     callKnowledge(params).then(function(payload){
       renderTemarioResult(payload, mode, showAnswers);
       renderTemarioSavedList();
+      populateTemarioReselectSelect();
     }).catch(function(err){
       result.innerHTML='<div class="banner danger">No se pudo generar ('+escapeHtml(err.message||"error")+').</div>';
     }).finally(function(){
       btn.disabled=false; btn.textContent=mode==="summary"?"Generar resumen con IA ✨":"Generar examen con IA 📝";
+    });
+  }
+
+  function runTemarioReview(generationId){
+    var result=document.getElementById("temarioResult");
+    var showAnswers=!!document.getElementById("temarioExamAnswers").checked;
+    result.innerHTML='<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; Armando un examen de repaso a partir de tus intentos anteriores…</div>';
+    var params={
+      action:"generateReviewExam",
+      generationId:generationId,
+      count:Number(document.getElementById("temarioExamCount").value||10),
+      examType:document.getElementById("temarioExamType").value||"Mixto",
+      difficulty:Number(document.getElementById("temarioExamDifficulty").value||3)
+    };
+    callKnowledge(params).then(function(payload){
+      renderTemarioResult(payload, "questions", showAnswers);
+    }).catch(function(err){
+      result.innerHTML='<div class="banner danger">No se pudo armar el repaso ('+escapeHtml(err.message||"error")+').</div>';
     });
   }
 

@@ -396,24 +396,31 @@ async function generateFromSyllabus(user: any, mode: string, syllabusText: strin
 
   const result = await generateFromSyllabusCore(user, mode, syllabusText, examOptions);
 
-  rest("knowledge_syllabus_generations", {
-    method: "POST",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({
-      syllabus_hash: hash,
-      mode,
-      topic: result.topic,
-      syllabus_text: syllabusText,
-      exam_options: mode === "questions" ? examOptions : null,
-      summary: mode === "summary" ? (result as any).summary : null,
-      questions: mode === "questions" ? (result as any).questions : null,
-      items_covered: result.itemsCovered,
-      sources: result.sources,
-      created_by: user?.email ?? null
-    })
-  }).catch(() => {});
+  let generationId: number | undefined;
+  try {
+    const ins = await rest("knowledge_syllabus_generations", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        syllabus_hash: hash,
+        mode,
+        topic: result.topic,
+        syllabus_text: syllabusText,
+        exam_options: mode === "questions" ? examOptions : null,
+        summary: mode === "summary" ? (result as any).summary : null,
+        questions: mode === "questions" ? (result as any).questions : null,
+        items_covered: result.itemsCovered,
+        sources: result.sources,
+        created_by: user?.email ?? null
+      })
+    });
+    if (ins.ok) {
+      const [row] = await ins.json();
+      generationId = row?.id;
+    }
+  } catch (_) {}
 
-  return { ...result, fromCache: false };
+  return { ...result, fromCache: false, generationId };
 }
 
 async function listSyllabusGenerations() {
@@ -429,6 +436,7 @@ async function getSyllabusGeneration(id: number) {
   const row = Array.isArray(rows) ? rows[0] : null;
   if (!row) throw new Error("SYLLABUS_NOT_FOUND");
   return {
+    generationId: row.id,
     summary: row.summary ?? undefined,
     questions: row.questions ?? undefined,
     topic: row.topic,
@@ -436,6 +444,184 @@ async function getSyllabusGeneration(id: number) {
     sources: row.sources || [],
     syllabusText: row.syllabus_text,
     mode: row.mode
+  };
+}
+
+async function saveExamAttempt(user: any, body: any) {
+  const id = body?.id != null ? Number(body.id) : null;
+  const status = body?.status === "completed" ? "completed" : "in_progress";
+  const payload: any = {
+    topic: cleanText(body?.topic, 300) || "Examen",
+    questions: Array.isArray(body?.questions) ? body.questions : [],
+    answers: body?.answers && typeof body.answers === "object" ? body.answers : {},
+    status,
+    updated_at: new Date().toISOString()
+  };
+  if (body?.generationId != null && Number.isFinite(Number(body.generationId))) payload.generation_id = Number(body.generationId);
+  if (status === "completed") {
+    payload.graded = Array.isArray(body?.graded) ? body.graded : null;
+    payload.nota = typeof body?.nota === "number" ? body.nota : null;
+  }
+
+  if (id) {
+    const r = await rest(`knowledge_exam_attempts?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) throw new Error("EXAM_ATTEMPT_SAVE_FAILED");
+    const [row] = await r.json();
+    return { id: row?.id ?? id };
+  }
+
+  payload.created_by = user?.email ?? null;
+  const r = await rest("knowledge_exam_attempts", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) throw new Error("EXAM_ATTEMPT_SAVE_FAILED");
+  const [row] = await r.json();
+  return { id: row?.id };
+}
+
+async function listExamAttempts(filters: any) {
+  const parts: string[] = [];
+  if (filters?.generationId != null && Number.isFinite(Number(filters.generationId))) parts.push(`generation_id=eq.${Number(filters.generationId)}`);
+  if (filters?.status) parts.push(`status=eq.${encodeURIComponent(String(filters.status))}`);
+  const query = parts.length ? "&" + parts.join("&") : "";
+  const r = await rest(`knowledge_exam_attempts?select=id,generation_id,topic,status,nota,created_at,updated_at${query}&order=updated_at.desc&limit=50`);
+  if (!r.ok) throw new Error("EXAM_ATTEMPTS_LIST_FAILED");
+  return await r.json();
+}
+
+async function getExamAttempt(id: number) {
+  const r = await rest(`knowledge_exam_attempts?id=eq.${id}&select=*&limit=1`);
+  if (!r.ok) throw new Error("EXAM_ATTEMPT_GET_FAILED");
+  const rows = await r.json();
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) throw new Error("EXAM_ATTEMPT_NOT_FOUND");
+  return {
+    id: row.id,
+    generationId: row.generation_id,
+    topic: row.topic,
+    questions: row.questions || [],
+    answers: row.answers || {},
+    graded: row.graded || null,
+    nota: row.nota,
+    status: row.status
+  };
+}
+
+async function generateReviewExam(user: any, generationId: number, examOptions: any = {}) {
+  const genRes = await rest(`knowledge_syllabus_generations?id=eq.${generationId}&select=*&limit=1`);
+  if (!genRes.ok) throw new Error("SYLLABUS_GET_FAILED");
+  const genRows = await genRes.json();
+  const generation = Array.isArray(genRows) ? genRows[0] : null;
+  if (!generation) throw new Error("SYLLABUS_NOT_FOUND");
+  const topicTitle = cleanText(generation.topic, 200);
+  const itemsCovered: { item: string; fragmentCount: number }[] = Array.isArray(generation.items_covered) ? generation.items_covered : [];
+  const itemLabels = itemsCovered.map(it => it.item);
+  if (!itemLabels.length) throw new Error("NO_ITEMS_TO_REVIEW");
+
+  const attemptsRes = await rest(`knowledge_exam_attempts?generation_id=eq.${generationId}&status=eq.completed&select=questions,graded&order=updated_at.desc&limit=10`);
+  const attempts = attemptsRes.ok ? await attemptsRes.json() : [];
+
+  const itemScores = new Map<string, number[]>();
+  const askedQuestions = new Set<string>();
+  for (const att of attempts) {
+    const qs = Array.isArray(att.questions) ? att.questions : [];
+    const graded = Array.isArray(att.graded) ? att.graded : [];
+    qs.forEach((q: any, i: number) => {
+      const qText = cleanText(q?.question, 300);
+      if (qText) askedQuestions.add(qText);
+      const item = cleanText(q?.item, 400);
+      const g = graded[i];
+      if (item && g && typeof g.score === "number") {
+        const arr = itemScores.get(item) || [];
+        arr.push(g.score);
+        itemScores.set(item, arr);
+      }
+    });
+  }
+
+  const { byItem, orderedIds } = await gatherSyllabusFragments(itemLabels);
+  if (!orderedIds.length) throw new Error("NO_MATCHING_MATERIAL");
+  const fragments = await loadFragments(orderedIds, 60);
+  const fragmentMap = new Map(fragments.map((f: any) => [Number(f.id), f]));
+
+  let chars = 0;
+  const blocks: string[] = [];
+  const itemsCoveredNew: { item: string; fragmentCount: number }[] = [];
+  for (const entry of byItem) {
+    const frags = entry.fragmentIds.map((id: number) => fragmentMap.get(id)).filter(Boolean);
+    let usedCount = 0;
+    const parts: string[] = [];
+    for (const f of frags) {
+      const n = String((f as any).content || "").length;
+      if (chars + n > 140000) continue;
+      chars += n;
+      parts.push(sourceText(f));
+      usedCount++;
+    }
+    itemsCoveredNew.push({ item: entry.item, fragmentCount: usedCount });
+    if (parts.length) blocks.push(`=== ÍTEM DEL EJE: ${entry.item} ===\n${parts.join("\n\n")}`);
+  }
+  const source = blocks.join("\n\n---\n\n");
+  if (!source) throw new Error("NO_MATCHING_MATERIAL");
+
+  const itemsWithMaterial = itemsCoveredNew.filter(it => it.fragmentCount > 0);
+  const totalCount = Math.max(1, Math.min(30, Number(examOptions.count) || 10));
+
+  const weightOf = (item: string) => {
+    const scores = itemScores.get(item);
+    if (!scores || !scores.length) return 60;
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    return Math.max(10, 100 - avg);
+  };
+  const weights = itemsWithMaterial.map(it => weightOf(it.item));
+  const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+  let assigned = 0;
+  const distribution = itemsWithMaterial.map((it, i) => {
+    const count = i === itemsWithMaterial.length - 1
+      ? Math.max(1, totalCount - assigned)
+      : Math.max(1, Math.round((weights[i] / totalWeight) * totalCount));
+    assigned += count;
+    const scores = itemScores.get(it.item);
+    const avg = scores && scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+    return { item: it.item, count, avgScore: avg };
+  });
+  const distributionText = distribution.map(d => `- "${d.item}": ${d.count} pregunta(s)${d.avgScore != null ? ` (rendimiento previo: ${d.avgScore}% de aciertos — reforzar si es bajo)` : " (sin intentos previos)"}`).join("\n");
+  const askedText = [...askedQuestions].slice(0, 80).map(q => `- ${q}`).join("\n");
+  const examType = cleanText(examOptions.examType, 80) || "Mixto";
+  const difficulty = Math.max(1, Math.min(5, Number(examOptions.difficulty) || 3));
+
+  const prompt = `Generá exactamente ${totalCount} preguntas de examen de REPASO para el eje temático "${topicTitle}" usando EXCLUSIVAMENTE las fuentes proporcionadas, agrupadas por ítem del eje (marcadas con "=== ÍTEM DEL EJE: ... ==="). Tipo solicitado: ${examType}. Dificultad: ${difficulty}/5. No inventes datos. Evitá preguntas redundantes.
+
+Este es un examen de REPASO: el estudiante ya rindió este eje antes. Repartí las preguntas priorizando los ítems con peor rendimiento previo, según esta distribución (respetala lo más posible):
+${distributionText}
+
+${askedText ? `Preguntas YA UTILIZADAS en intentos anteriores — NO las repitas, generá preguntas DIFERENTES aunque sean sobre el mismo ítem:\n${askedText}\n\n` : ""}Cada pregunta debe incluir el campo "item" con el texto EXACTO del ítem al que corresponde (de la lista de arriba).
+
+Reglas por tipo de pregunta (respetalas estrictamente, NO conviertas todo a opción múltiple):
+- "Opción múltiple": options debe tener exactamente 4 alternativas, y answer el índice (0-3) de la correcta. correctAnswer va vacío ("").
+- "Verdadero/Falso": options debe ser exactamente ["Verdadero","Falso"], y answer el índice (0 o 1) de la correcta. correctAnswer va vacío ("").
+- "Respuesta corta", "Desarrollo" o "Caso clínico": options debe ser un arreglo VACÍO [], answer debe ser null, y correctAnswer debe tener la respuesta modelo completa esperada (no una opción, sino la respuesta real en texto).
+- Si el tipo solicitado es "Mixto", elegí para cada pregunta un type de los de arriba (variá entre opción múltiple, verdadero/falso y preguntas abiertas) y aplicá la regla que corresponda a ese type.
+
+Devolvé SOLO JSON válido con esta forma exacta: {"questions":[{"question":"...","type":"...","item":"...","options":[],"answer":null,"correctAnswer":"...","source":"..."}]}\n\nFUENTES POR ÍTEM:\n${source}`;
+  const r = await callOpenAI(prompt, 12000);
+  await recordUsage(user, "knowledgeSyllabusReview", topicTitle, r.raw, fragments);
+  let parsed: any;
+  try { parsed = JSON.parse(r.text.replace(/^\`\`\`json\s*/i, "").replace(/\s*\`\`\`$/, "")); }
+  catch { throw new Error("INVALID_QUESTIONS_JSON"); }
+  return {
+    questions: Array.isArray(parsed?.questions) ? parsed.questions : [],
+    topic: topicTitle,
+    itemsCovered: itemsCoveredNew,
+    sources: fragments.map(sourceMeta),
+    generationId,
+    isReview: true
   };
 }
 
@@ -645,6 +831,23 @@ Deno.serve(async (req:Request)=>{
       const id=Number(body.id);
       if(!Number.isFinite(id)) throw new Error("SYLLABUS_ID_REQUIRED");
       return json({ok:true,...await getSyllabusGeneration(id)});
+    }
+    if(action==="saveExamAttempt"){
+      return json({ok:true,...await saveExamAttempt(user,body)});
+    }
+    if(action==="listExamAttempts"){
+      return json({ok:true,items:await listExamAttempts({generationId:body.generationId,status:body.status})});
+    }
+    if(action==="getExamAttempt"){
+      const id=Number(body.id);
+      if(!Number.isFinite(id)) throw new Error("ATTEMPT_ID_REQUIRED");
+      return json({ok:true,...await getExamAttempt(id)});
+    }
+    if(action==="generateReviewExam"){
+      const generationId=Number(body.generationId);
+      if(!Number.isFinite(generationId)) throw new Error("GENERATION_ID_REQUIRED");
+      const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty};
+      return json({ok:true,mode:"questions",...await generateReviewExam(user,generationId,examOptions)});
     }
     return json({error:"INVALID_ACTION"},400);
   } catch(e:any) {
