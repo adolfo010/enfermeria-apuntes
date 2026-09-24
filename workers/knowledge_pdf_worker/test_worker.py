@@ -96,3 +96,15 @@ def test_page_without_images_returns_no_figures() -> None:
             assert extract_page_figures(opened[0], 1) == []
         finally:
             opened.close()
+
+
+def test_figure_only_mode_has_no_direct_ai_calls() -> None:
+    # Guardrail: el modo exclusivo de figuras no debe crear ni invocar
+    # clientes o funciones de extracción de texto mediante IA.
+    from worker import extract_figures_only
+
+    names = set(extract_figures_only.__code__.co_names)
+    assert "OpenAI" not in names
+    assert "genai" not in names
+    assert "extract_chunk" not in names
+    assert "extract_chunk_with_retries" not in names
