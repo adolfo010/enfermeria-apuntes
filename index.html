@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.8.2";
+  var APP_VERSION = "0.8.3";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2402,12 +2402,19 @@
             if(!addition) throw new Error("La IA no devolvió contenido.");
             summary=summary+"\n\n## Información adicional (búsqueda web con IA)\n\n"+addition;
             document.getElementById("temarioSummaryText").textContent=summary;
-            status.innerHTML='<div class="banner info">✅ Se agregó el contenido de la web al final del resumen.</div>';
+            status.innerHTML='<div class="banner info">✅ Se agregó el contenido de la web al final del resumen.</div><div id="temarioWebImages" style="margin-top:6px;"><span class="spin"></span>&nbsp; Buscando imágenes relacionadas…</div>';
             webBtn.textContent='Buscar "'+topic+'" en la web con IA 🌐';
             webBtn.disabled=false;
             if(summaryGenId){
               callKnowledge({action:"appendSyllabusWebResearch",generationId:summaryGenId,content:addition}).catch(function(){});
             }
+            callKnowledge({action:"searchImages",term:topic}).then(function(imgRes){
+              var cont=document.getElementById("temarioWebImages");
+              if(cont) cont.innerHTML=renderCommonsImageGrid(imgRes.images||[])||'<div class="muted" style="font-size:12px;">No se encontraron imágenes relacionadas.</div>';
+            }).catch(function(){
+              var cont=document.getElementById("temarioWebImages");
+              if(cont) cont.innerHTML='';
+            });
           })
           .catch(function(err){
             status.innerHTML='<div class="banner danger">No se pudo buscar en la web ('+escapeHtml(err.message||"error")+').</div>';
@@ -2914,6 +2921,18 @@
     });
   }
 
+  function renderCommonsImageGrid(images){
+    if(!images || !images.length) return '';
+    return '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">'+
+      images.map(function(img){
+        var attrib=(img.artist?img.artist+' · ':'')+(img.license||'licencia libre')+' · Wikimedia Commons';
+        return '<a href="'+escapeHtml(img.descriptionUrl||img.fullUrl||'#')+'" target="_blank" rel="noopener" title="'+escapeHtml((img.title||'Imagen')+' — '+attrib)+'" style="display:block;">'+
+          '<img src="'+escapeHtml(img.thumbUrl)+'" alt="'+escapeHtml(img.title||'Imagen')+'" loading="lazy" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);">'+
+          '</a>';
+      }).join('')+
+      '</div><div class="muted" style="font-size:11px;margin-top:5px;">🖼 Imágenes de Wikimedia Commons con licencia libre (no copiadas a nuestro servidor). Clic para ver fuente, autor y licencia.</div>';
+  }
+
   function knowledgeSelectedList(){
     var out=[];
     knowledgeLastGroups.forEach(function(g){
@@ -3115,6 +3134,7 @@
       '</div>';
     if(lastWebAnswer && lastWebAnswer.topic===knowledgeTopic){
       var checked=lastWebAnswer.fragmentId && knowledgeSelectedIds[String(lastWebAnswer.fragmentId)] ? " checked" : "";
+      var imagesHtml=lastWebAnswer.images ? renderCommonsImageGrid(lastWebAnswer.images) : (lastWebAnswer.imagesLoading ? '<div class="muted" style="font-size:12px;margin-top:6px;"><span class="spin"></span>&nbsp; Buscando imágenes relacionadas…</div>' : '');
       html+='<div class="panel" style="margin:10px 6px;padding:12px;">'+
         '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;">'+
         (lastWebAnswer.fragmentId ? '<input type="checkbox" id="webAnswerCheck" data-id="'+lastWebAnswer.fragmentId+'"'+checked+'>' : '')+
@@ -3122,6 +3142,7 @@
         '</label>'+
         '<div class="muted" style="font-size:12px;margin-bottom:6px;">Tildá la casilla para incluirlo al generar un resumen o examen, igual que cualquier otro fragmento.</div>'+
         '<div class="banner warn" style="white-space:pre-wrap;">'+escapeHtml(lastWebAnswer.content||"")+'</div>'+
+        '<div id="webAnswerImages">'+imagesHtml+'</div>'+
         '</div>';
     }
     return html;
@@ -3139,13 +3160,24 @@
         status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el apunte (puede tardar un minuto)…';
         callKnowledge({action:"webSearch",topic:term})
           .then(function(res){
-            lastWebAnswer={topic:term,content:res.content||"",fragmentId:res.fragmentId};
+            lastWebAnswer={topic:term,content:res.content||"",fragmentId:res.fragmentId,imagesLoading:true};
             runSearch(term);
             // runSearch limpia la selección al iniciar la búsqueda; se vuelve a
             // marcar acá (de forma síncrona, antes de que responda el fetch)
             // para que el fragmento nuevo quede preseleccionado desde el
             // primer render del árbol.
             if(res.fragmentId) knowledgeSelectedIds[String(res.fragmentId)]=true;
+            callKnowledge({action:"searchImages",term:term}).then(function(imgRes){
+              if(!lastWebAnswer || lastWebAnswer.topic!==term) return;
+              lastWebAnswer.images=imgRes.images||[];
+              lastWebAnswer.imagesLoading=false;
+              var cont=document.getElementById("webAnswerImages");
+              if(cont) cont.innerHTML=renderCommonsImageGrid(lastWebAnswer.images)||'<div class="muted" style="font-size:12px;margin-top:6px;">No se encontraron imágenes relacionadas.</div>';
+            }).catch(function(){
+              if(lastWebAnswer && lastWebAnswer.topic===term) lastWebAnswer.imagesLoading=false;
+              var cont=document.getElementById("webAnswerImages");
+              if(cont) cont.innerHTML='';
+            });
           })
           .catch(function(err){
             status.innerHTML='<div class="banner danger">No se pudo buscar en la web ('+escapeHtml(err.message)+').</div>';

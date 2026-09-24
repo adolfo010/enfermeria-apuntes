@@ -846,6 +846,78 @@ async function webResearch(user: any, topic: string) {
   return { documentId: doc.id, fragmentId: frag.id, title: doc.title, content, citations };
 }
 
+function stripHtml(s: unknown) {
+  return String(s ?? "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+
+const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp|svg)$/i;
+
+async function commonsSearchRaw(query: string, limit: number) {
+  const params = new URLSearchParams({
+    action: "query",
+    format: "json",
+    generator: "search",
+    gsrsearch: query,
+    gsrnamespace: "6",
+    gsrlimit: String(limit),
+    prop: "imageinfo",
+    iiprop: "url|extmetadata",
+    iiurlwidth: "320"
+  });
+  const r = await fetch(`https://commons.wikimedia.org/w/api.php?${params.toString()}`, {
+    headers: { "User-Agent": "EnfermeriaRoxyApp/1.0 (uso educativo; contacto: soporte de la app)" }
+  });
+  if (!r.ok) return [];
+  const j = await r.json();
+  const pages = j?.query?.pages ? Object.values(j.query.pages) as any[] : [];
+  return pages;
+}
+
+function mapCommonsPage(p: any) {
+  const info = p?.imageinfo?.[0];
+  if (!info?.thumburl) return null;
+  const meta = info.extmetadata || {};
+  return {
+    title: stripHtml(meta.ObjectName?.value || String(p.title || "").replace(/^File:/, "")),
+    thumbUrl: info.thumburl,
+    fullUrl: info.url,
+    descriptionUrl: info.descriptionurl,
+    width: info.thumbwidth,
+    height: info.thumbheight,
+    license: stripHtml(meta.LicenseShortName?.value || meta.License?.value || ""),
+    licenseUrl: meta.LicenseUrl?.value || "",
+    artist: stripHtml(meta.Artist?.value || ""),
+    credit: stripHtml(meta.Credit?.value || "")
+  };
+}
+
+async function searchCommonsImages(term: string, limit = 12) {
+  const cleanTerm = cleanText(term, 200);
+  if (!cleanTerm) return { images: [] };
+
+  const seen = new Set<string>();
+  const images: any[] = [];
+
+  const filteredPages = await commonsSearchRaw(`${cleanTerm} filetype:bitmap|drawing`, limit * 2);
+  for (const p of filteredPages) {
+    const img = mapCommonsPage(p);
+    if (img && !seen.has(img.thumbUrl)) { seen.add(img.thumbUrl); images.push(img); }
+    if (images.length >= limit) break;
+  }
+
+  if (images.length < limit) {
+    const rawPages = await commonsSearchRaw(cleanTerm, limit * 3);
+    for (const p of rawPages) {
+      if (!IMAGE_EXT_RE.test(String(p?.title || ""))) continue;
+      const img = mapCommonsPage(p);
+      if (img && !seen.has(img.thumbUrl)) { seen.add(img.thumbUrl); images.push(img); }
+      if (images.length >= limit) break;
+    }
+  }
+
+  return { images };
+}
+
 async function appendSyllabusWebResearch(generationId: number, content: string) {
   const clean = String(content || "").trim();
   if (!clean) throw new Error("CONTENT_REQUIRED");
@@ -906,6 +978,10 @@ Deno.serve(async (req:Request)=>{
     if(action==="webSearch"){
       const topic=cleanText(body.topic,300);
       return json({ok:true,...await webResearch(user,topic)});
+    }
+    if(action==="searchImages"){
+      const term=cleanText(body.term,200);
+      return json({ok:true,...await searchCommonsImages(term)});
     }
     if(action==="gradeAnswers"){
       const topic=cleanText(body.topic,300);
