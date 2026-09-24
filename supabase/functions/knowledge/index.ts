@@ -284,6 +284,28 @@ async function generate(user:any, mode:string, topic:string, ids:number[], examO
   return {questions:Array.isArray(parsed?.questions)?parsed.questions:[],sources:selected.map(sourceMeta)};
 }
 
+async function gradeAnswers(user:any, topic:string, items:any[]) {
+  const clean=(Array.isArray(items)?items:[]).slice(0,30).map((it:any)=>({
+    question:cleanText(it?.question,1000),
+    correctAnswer:cleanText(it?.correctAnswer,2000),
+    userAnswer:cleanText(it?.userAnswer,2000)
+  })).filter((it:any)=>it.question);
+  if(!clean.length) return {results:[]};
+  const cleanTopic=cleanText(topic,300)||"tema seleccionado";
+  const list=clean.map((it:any,i:number)=>`${i+1}) PREGUNTA: ${it.question}\nRESPUESTA MODELO: ${it.correctAnswer||"(sin respuesta modelo)"}\nRESPUESTA DEL ESTUDIANTE: ${it.userAnswer||"(sin responder)"}`).join("\n\n");
+  const prompt=`Sos un profesor de Enfermería corrigiendo un examen sobre "${cleanTopic}". Para cada pregunta de abajo, comparé la respuesta del estudiante con la respuesta modelo y asigná un puntaje de 0 a 100 según qué tan correcta y completa es. No hace falta texto idéntico, pero el contenido debe ser correcto; una respuesta vacía o sin relación con el tema vale 0. Agregá una devolución breve (1-2 oraciones) explicando qué está bien o qué falta. Devolvé SOLO JSON válido con esta forma exacta, en el mismo orden y cantidad que las preguntas: {"results":[{"score":0,"feedback":"..."}]}\n\n${list}`;
+  const r=await callOpenAI(prompt,6000);
+  await recordUsage(user,"knowledgeGradeExam",cleanTopic,r.raw,[]);
+  let parsed:any;
+  try { parsed=JSON.parse(r.text.replace(/^\`\`\`json\s*/i,"").replace(/\s*\`\`\`$/,"")); }
+  catch { throw new Error("INVALID_GRADING_JSON"); }
+  const results=Array.isArray(parsed?.results)?parsed.results:[];
+  return {results:clean.map((_:any,i:number)=>({
+    score:Math.max(0,Math.min(100,Number(results[i]?.score)||0)),
+    feedback:cleanText(results[i]?.feedback,500)
+  }))};
+}
+
 const WEB_IA_WARNING = "⚠️ Contenido generado por IA a partir de una búsqueda web en el momento de la consulta. No es un libro de cátedra verificado: puede contener errores o imprecisiones. Usar como apoyo y confirmar con la bibliografía oficial.";
 
 async function webResearch(user: any, topic: string) {
@@ -377,6 +399,11 @@ Deno.serve(async (req:Request)=>{
     if(action==="webSearch"){
       const topic=cleanText(body.topic,300);
       return json({ok:true,...await webResearch(user,topic)});
+    }
+    if(action==="gradeAnswers"){
+      const topic=cleanText(body.topic,300);
+      const items=Array.isArray(body.items)?body.items:[];
+      return json({ok:true,...await gradeAnswers(user,topic,items)});
     }
     return json({error:"INVALID_ACTION"},400);
   } catch(e:any) {

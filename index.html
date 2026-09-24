@@ -184,6 +184,20 @@
   .question-options{margin:9px 0 0;padding-left:22px;line-height:1.6;}
   .question-answer{margin-top:10px;padding:10px;border-radius:8px;background:var(--good-soft);}
   .question-answer strong{display:block;margin-bottom:4px;}
+  .exam-take-card{width:min(820px,100%);}
+  .exam-take-option{display:flex;align-items:flex-start;gap:8px;padding:7px 0;font-size:14.5px;cursor:pointer;}
+  .exam-take-option input{margin-top:3px;}
+  .exam-take-textarea{width:100%;min-height:90px;margin-top:9px;padding:9px 10px;font:inherit;font-size:14.5px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical;}
+  .exam-result-card{border-left:4px solid var(--line);}
+  .exam-result-card.correct{border-left-color:var(--good);}
+  .exam-result-card.incorrect{border-left-color:var(--danger);}
+  .exam-score-badge{display:inline-block;font-family:var(--font-mono);font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;margin-left:8px;}
+  .exam-score-badge.correct{background:var(--good-soft);color:var(--good);}
+  .exam-score-badge.incorrect{background:var(--danger-soft);color:var(--danger);}
+  .exam-nota-banner{text-align:center;padding:20px;border-radius:12px;background:var(--good-soft);margin-bottom:16px;}
+  .exam-nota-banner .num{font-size:40px;font-weight:700;color:var(--good);line-height:1;}
+  .exam-nota-banner .num.low{color:var(--danger);}
+  .exam-nota-banner.low{background:var(--danger-soft);}
   @media (max-width:600px){.exam-controls{grid-template-columns:1fr;}}
   .summary-scroll{max-height:430px;overflow:auto;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
@@ -354,6 +368,19 @@
   </div>
 </div>
 
+<div class="reader-modal" id="examTakeModal" aria-hidden="true">
+  <div class="reader-card exam-take-card" role="dialog" aria-modal="true" aria-labelledby="examTakeTitle">
+    <div class="reader-head">
+      <div>
+        <h2 id="examTakeTitle">Rendir examen</h2>
+        <div class="reader-meta" id="examTakeMeta"></div>
+      </div>
+      <button type="button" class="small ghost" id="closeExamTakeBtn">Cerrar</button>
+    </div>
+    <div class="reader-body" id="examTakeBody" style="font-size:15px;white-space:normal;"></div>
+  </div>
+</div>
+
 <div class="shell" id="appShell" style="display:none;">
 
   <div class="app-layout">
@@ -475,7 +502,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.4.32";
+  var APP_VERSION = "0.5.0";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1234,11 +1261,17 @@
            html+='<div class="question-card"><div class="q-number">PREGUNTA '+(idx+1)+' · '+escapeHtml(q.type||type)+'</div>';
            html+='<div class="q-text">'+escapeHtml(q.question||"")+'</div>';
            if(Array.isArray(q.options)&&q.options.length) html+='<ol class="question-options" type="A">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>';
-           if(includeAnswers) html+='<div class="question-answer"><strong>Respuesta</strong>'+escapeHtml(q.correctAnswer||"")+(q.explanation?'<div style="margin-top:6px;"><strong>Explicación</strong>'+escapeHtml(q.explanation)+'</div>':"")+'</div>';
            html+='</div>';
          });
+         if(includeAnswers){
+           html+='<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>';
+           qs.forEach(function(q,idx){
+             html+='<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(idx+1)+'</strong> '+escapeHtml(q.correctAnswer||"")+(q.explanation?'<div style="margin-top:6px;"><strong>Explicación</strong> '+escapeHtml(q.explanation)+'</div>':"")+'</div>';
+           });
+         }
          html+='</div>';
          html+='<div class="summarize-row" style="margin-top:12px;flex-wrap:wrap;">' +
+           '<button type="button" id="takeExamBtn">Rendir examen ahora ✏️</button>' +
            '<button type="button" id="readExamBtn">Ver en pantalla completa ⛶</button>' +
            '<button type="button" class="ghost" id="copyExamBtn">Copiar examen 📋</button>' +
            '<button type="button" class="ghost" id="downloadExamPdfBtn">Descargar PDF ↓</button>' +
@@ -1246,6 +1279,7 @@
          '</div><div id="examDownloadMsg" style="margin-top:6px;font-size:13px;"></div>';
          target.innerHTML=html;
          var examPlain=buildExamText(qs,chosen,topic,includeAnswers);
+         target.querySelector("#takeExamBtn").addEventListener("click",function(){openExamTake(qs,topic,chosen);});
          target.querySelector("#readExamBtn").addEventListener("click",function(){openReader(reportTitle, chosen.map(function(f){return f.name;}).join(" · "), examPlain);});
          target.querySelector("#copyExamBtn").addEventListener("click",function(){copyToClipboard(examPlain).then(function(ok){target.querySelector("#examDownloadMsg").textContent=ok?"Examen copiado ✓":"No se pudo copiar automáticamente.";});});
          target.querySelector("#downloadExamWordBtn").addEventListener("click",function(){downloadExamWord(examPlain,chosen,topic);});
@@ -1263,9 +1297,15 @@
      qs.forEach(function(q,idx){
        out+="PREGUNTA "+(idx+1)+" — "+(q.type||"")+"\n"+(q.question||"")+"\n";
        if(Array.isArray(q.options)) q.options.forEach(function(o,i){out+=String.fromCharCode(65+i)+") "+o+"\n";});
-       if(includeAnswers){out+="Respuesta: "+(q.correctAnswer||"")+"\n";if(q.explanation) out+="Explicación: "+q.explanation+"\n";}
        out+="\n";
      });
+     if(includeAnswers){
+       out+="CLAVE DE RESPUESTAS\n\n";
+       qs.forEach(function(q,idx){
+         out+="Pregunta "+(idx+1)+": "+(q.correctAnswer||"")+"\n";
+         if(q.explanation) out+="Explicación: "+q.explanation+"\n";
+       });
+     }
      return out;
    }
    function downloadExamWord(textContent,chosen,topic){
@@ -1284,6 +1324,205 @@
      doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.text(doc.splitTextToSize(names,contentWidth),marginLeft,y);y+=10;
      doc.setFontSize(10.5);doc.splitTextToSize(textContent,contentWidth).forEach(function(line){if(y>pageHeight-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=5.3;});
      saveBlobFile(doc.output("blob"), safeDownloadName(chosen,topic)+"_examen.pdf");
+   }
+
+   var examTakeState = null;
+
+   function questionCorrectIndex(q){
+     if(!Array.isArray(q.options) || !q.options.length) return -1;
+     if(typeof q.answer==="number" && q.answer>=0 && q.answer<q.options.length) return q.answer;
+     if(q.correctAnswer){
+       var target=String(q.correctAnswer).trim().toLowerCase();
+       for(var i=0;i<q.options.length;i++){
+         if(String(q.options[i]).trim().toLowerCase()===target) return i;
+       }
+     }
+     return -1;
+   }
+
+   function questionModelAnswerText(q){
+     var idx=questionCorrectIndex(q);
+     if(idx>=0) return q.options[idx];
+     return q.correctAnswer || "";
+   }
+
+   function openExamTake(qs, topic, chosen){
+     if(!qs || !qs.length) return;
+     var items=qs.map(function(q,i){
+       var correctIndex=questionCorrectIndex(q);
+       return {
+         index:i,
+         question:q.question||"",
+         options:Array.isArray(q.options)?q.options:[],
+         kind:correctIndex>=0 ? "choice" : "open",
+         correctIndex:correctIndex,
+         modelAnswer:questionModelAnswerText(q),
+         explanation:q.explanation||"",
+         userIndex:null,
+         userText:""
+       };
+     });
+     examTakeState={topic:topic||"", chosen:chosen||[], items:items, graded:false};
+     renderExamTakeForm();
+     var modal=document.getElementById("examTakeModal");
+     document.getElementById("examTakeTitle").textContent=topic ? "Rendir examen: "+topic : "Rendir examen";
+     document.getElementById("examTakeMeta").textContent=items.length+" preguntas";
+     modal.classList.add("open"); modal.setAttribute("aria-hidden","false");
+   }
+
+   function closeExamTake(){
+     var modal=document.getElementById("examTakeModal");
+     modal.classList.remove("open"); modal.setAttribute("aria-hidden","true");
+   }
+
+   function renderExamTakeForm(){
+     var body=document.getElementById("examTakeBody");
+     var html="";
+     examTakeState.items.forEach(function(it){
+       html+='<div class="question-card"><div class="q-number">PREGUNTA '+(it.index+1)+'</div><div class="q-text">'+escapeHtml(it.question)+'</div>';
+       if(it.kind==="choice"){
+         html+='<div style="margin-top:9px;">'+it.options.map(function(o,oi){
+           return '<label class="exam-take-option"><input type="radio" name="examq_'+it.index+'" value="'+oi+'"> <span>'+String.fromCharCode(65+oi)+') '+escapeHtml(o)+'</span></label>';
+         }).join("")+'</div>';
+       } else {
+         html+='<textarea class="exam-take-textarea" data-qindex="'+it.index+'" placeholder="Escribí tu respuesta…"></textarea>';
+       }
+       html+='</div>';
+     });
+     html+='<div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;"><button type="button" id="submitExamTakeBtn">Entregar examen ✓</button></div><div id="examTakeMsg" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>';
+     body.innerHTML=html;
+     document.getElementById("submitExamTakeBtn").addEventListener("click", submitExamTake);
+   }
+
+   function submitExamTake(){
+     examTakeState.items.forEach(function(it){
+       if(it.kind==="choice"){
+         var checked=document.querySelector('input[name="examq_'+it.index+'"]:checked');
+         it.userIndex=checked ? Number(checked.value) : null;
+       } else {
+         var ta=document.querySelector('textarea[data-qindex="'+it.index+'"]');
+         it.userText=ta ? ta.value.trim() : "";
+       }
+     });
+     var btn=document.getElementById("submitExamTakeBtn");
+     var msg=document.getElementById("examTakeMsg");
+     if(btn){btn.disabled=true;btn.textContent="Corrigiendo…";}
+     if(msg) msg.textContent="";
+
+     var openItems=examTakeState.items.filter(function(it){return it.kind==="open";});
+     var gradePromise = openItems.length
+       ? callKnowledge({
+           action:"gradeAnswers",
+           topic:examTakeState.topic,
+           items:openItems.map(function(it){return {question:it.question, correctAnswer:it.modelAnswer, userAnswer:it.userText};})
+         }).then(function(payload){
+           var results=(payload && payload.results) || [];
+           openItems.forEach(function(it,i){ it.aiScore=results[i] ? results[i].score : 0; it.aiFeedback=results[i] ? results[i].feedback : ""; });
+         })
+       : Promise.resolve();
+
+     gradePromise.then(function(){
+       renderExamTakeResults();
+     }).catch(function(err){
+       if(msg) msg.textContent="No se pudo corregir el examen ("+(err.message||"error")+"). Podés reintentar.";
+     }).finally(function(){
+       if(btn){btn.disabled=false;btn.textContent="Entregar examen ✓";}
+     });
+   }
+
+   function examItemScore(it){
+     if(it.kind==="choice") return it.userIndex===it.correctIndex ? 100 : 0;
+     return typeof it.aiScore==="number" ? it.aiScore : 0;
+   }
+
+   function renderExamTakeResults(){
+     examTakeState.graded=true;
+     var items=examTakeState.items;
+     var total=0;
+     items.forEach(function(it){ total+=examItemScore(it); });
+     var avgPercent=items.length ? total/items.length : 0;
+     var nota=Math.max(0, Math.min(10, avgPercent/10));
+     examTakeState.nota=nota;
+     examTakeState.avgPercent=avgPercent;
+
+     var notaClass=nota>=6 ? "" : "low";
+     var html='<div class="exam-nota-banner '+notaClass+'"><div class="num '+notaClass+'">'+nota.toFixed(1)+'</div><div style="margin-top:4px;color:var(--muted);font-size:13px;">Nota sobre 10 · '+Math.round(avgPercent)+'% de aciertos</div></div>';
+
+     items.forEach(function(it){
+       var score=examItemScore(it);
+       var isCorrect=it.kind==="choice" ? (score===100) : (score>=60);
+       var cardClass=isCorrect ? "correct" : "incorrect";
+       html+='<div class="question-card exam-result-card '+cardClass+'"><div class="q-number">PREGUNTA '+(it.index+1)+'<span class="exam-score-badge '+cardClass+'">'+(it.kind==="choice"?(isCorrect?"Correcta":"Incorrecta"):(Math.round(score)+"/100"))+'</span></div>';
+       html+='<div class="q-text">'+escapeHtml(it.question)+'</div>';
+       if(it.kind==="choice"){
+         html+='<div style="margin-top:8px;font-size:13.5px;"><strong>Tu respuesta:</strong> '+(it.userIndex!=null ? escapeHtml(String.fromCharCode(65+it.userIndex)+") "+(it.options[it.userIndex]||"")) : '<em>Sin responder</em>')+'</div>';
+         if(!isCorrect) html+='<div style="margin-top:4px;font-size:13.5px;"><strong>Respuesta correcta:</strong> '+escapeHtml(String.fromCharCode(65+it.correctIndex)+") "+(it.options[it.correctIndex]||""))+'</div>';
+       } else {
+         html+='<div style="margin-top:8px;font-size:13.5px;white-space:pre-wrap;"><strong>Tu respuesta:</strong> '+(it.userText ? escapeHtml(it.userText) : '<em>Sin responder</em>')+'</div>';
+         html+='<div style="margin-top:4px;font-size:13.5px;"><strong>Respuesta modelo:</strong> '+escapeHtml(it.modelAnswer||"")+'</div>';
+         if(it.aiFeedback) html+='<div style="margin-top:4px;font-size:13.5px;color:var(--muted);"><strong>Devolución:</strong> '+escapeHtml(it.aiFeedback)+'</div>';
+       }
+       if(it.explanation) html+='<div style="margin-top:6px;font-size:12.5px;color:var(--muted);"><strong>Explicación:</strong> '+escapeHtml(it.explanation)+'</div>';
+       html+='</div>';
+     });
+
+     html+='<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" class="ghost" id="downloadExamResultPdfBtn">Descargar PDF ↓</button><button type="button" class="ghost" id="downloadExamResultWordBtn">Descargar Word ↓</button></div>';
+
+     document.getElementById("examTakeBody").innerHTML=html;
+     document.getElementById("downloadExamResultPdfBtn").addEventListener("click", downloadExamResultPdf);
+     document.getElementById("downloadExamResultWordBtn").addEventListener("click", downloadExamResultWord);
+   }
+
+   function buildExamResultText(){
+     var s=examTakeState;
+     var out=(s.topic ? "RESULTADO DEL EXAMEN: "+s.topic : "RESULTADO DEL EXAMEN")+"\n\n";
+     out+="Nota: "+s.nota.toFixed(1)+"/10 ("+Math.round(s.avgPercent)+"% de aciertos)\n\n";
+     s.items.forEach(function(it){
+       var score=examItemScore(it);
+       out+="PREGUNTA "+(it.index+1)+"\n"+it.question+"\n";
+       if(it.kind==="choice"){
+         out+="Tu respuesta: "+(it.userIndex!=null ? String.fromCharCode(65+it.userIndex)+") "+(it.options[it.userIndex]||"") : "Sin responder")+"\n";
+         out+="Resultado: "+(it.userIndex===it.correctIndex ? "Correcta" : "Incorrecta")+"\n";
+         if(it.userIndex!==it.correctIndex) out+="Respuesta correcta: "+String.fromCharCode(65+it.correctIndex)+") "+(it.options[it.correctIndex]||"")+"\n";
+       } else {
+         out+="Tu respuesta: "+(it.userText||"Sin responder")+"\n";
+         out+="Puntaje: "+Math.round(score)+"/100\n";
+         out+="Respuesta modelo: "+(it.modelAnswer||"")+"\n";
+         if(it.aiFeedback) out+="Devolución: "+it.aiFeedback+"\n";
+       }
+       if(it.explanation) out+="Explicación: "+it.explanation+"\n";
+       out+="\n";
+     });
+     return out;
+   }
+
+   function downloadExamResultWord(){
+     var title=examTakeState.topic ? "Resultado: "+examTakeState.topic : "Resultado del examen";
+     var text=buildExamResultText();
+     var html='<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>@page Section1{size:21cm 29.7cm;margin:1cm 1cm 1cm 2cm;mso-header-margin:.5cm;mso-footer-margin:.5cm;mso-paper-source:0;}div.Section1{page:Section1;}body{font-family:Arial,sans-serif;font-size:11pt;margin:0;line-height:1.5;color:#222;white-space:pre-wrap}h1{font-size:20pt}</style></head><body><div class="Section1"><h1>'+escapeHtml(title)+'</h1>'+escapeHtml(text).replace(/\n/g,"<br>")+'</div></body></html>';
+     var BOM = String.fromCharCode(65279);
+     var blob=new Blob([BOM,html],{type:"application/msword"});
+     saveBlobFile(blob, safeDownloadName(examTakeState.chosen, examTakeState.topic)+"_resultado.doc");
+   }
+
+   function downloadExamResultPdf(){
+     if(!window.jspdf||!window.jspdf.jsPDF){alert("No se pudo cargar el generador de PDF. Recargá la página e intentá nuevamente.");return;}
+     var JsPDF=window.jspdf.jsPDF, doc=new JsPDF({unit:"mm",format:"a4"});
+     var title=examTakeState.topic ? "Resultado: "+examTakeState.topic : "Resultado del examen";
+     var text=buildExamResultText();
+     var marginLeft=20,marginRight=10,marginTop=10,marginBottom=10,pageWidth=210,pageHeight=297,contentWidth=pageWidth-marginLeft-marginRight,y=marginTop+4;
+     doc.setFont("helvetica","bold"); doc.setFontSize(16);
+     doc.text(doc.splitTextToSize(title,contentWidth),marginLeft,y); y+=12;
+     doc.setFont("helvetica","normal"); doc.setFontSize(10.5);
+     var compact=text.replace(/\n{3,}/g,"\n\n");
+     var lines=doc.splitTextToSize(compact,contentWidth);
+     var lineHeight=5.3, blankLineHeight=2.2;
+     lines.forEach(function(line){
+       if(y>pageHeight-marginBottom){ doc.addPage(); y=marginTop+4; }
+       if(line===""){ y+=blankLineHeight; return; }
+       doc.text(line,marginLeft,y); y+=lineHeight;
+     });
+     saveBlobFile(doc.output("blob"), safeDownloadName(examTakeState.chosen, examTakeState.topic)+"_resultado.pdf");
    }
 
    function friendlyDeleteError(err){
@@ -1991,7 +2230,11 @@
     var title="Examen: "+(topic||"Tema");
     var html='<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>@page Section1{size:21cm 29.7cm;margin:1cm 1cm 1cm 2cm;mso-header-margin:.5cm;mso-footer-margin:.5cm;mso-paper-source:0;}div.Section1{page:Section1;}body{font-family:Arial;font-size:11pt;margin:0;line-height:1.5;color:#222}h1{font-size:20pt}.q{margin:0 0 18px}.src{color:#666;font-size:9pt}</style></head><body><div class="Section1"><h1>'+escapeHtml(title)+'</h1>';
     qs.forEach(function(q,i){
-      html+='<div class="q"><strong>Pregunta '+(i+1)+'</strong><p>'+escapeHtml(q.question||"")+'</p><ol>'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol><p><strong>Respuesta correcta:</strong> '+escapeHtml((q.options||[])[q.answer]||"")+'</p><div class="src">'+escapeHtml(q.source||"Fuente indicada por la IA")+'</div></div>';
+      html+='<div class="q"><strong>Pregunta '+(i+1)+'</strong><p>'+escapeHtml(q.question||"")+'</p><ol>'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol></div>';
+    });
+    html+='<h2 style="font-size:14pt;">Clave de respuestas</h2>';
+    qs.forEach(function(q,i){
+      html+='<p><strong>Pregunta '+(i+1)+':</strong> '+escapeHtml((q.options||[])[q.answer]||"")+' <span class="src">· '+escapeHtml(q.source||"Fuente indicada por la IA")+'</span></p>';
     });
     html+='</div></body></html>';
     saveBlobFile(new Blob(["\ufeff",html],{type:"application/msword"}),safeDownloadName([],topic)+"_examen.doc");
@@ -2009,11 +2252,19 @@
       ql.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=5;});
       doc.setFont("helvetica","normal"); doc.setFontSize(10);
       (q.options||[]).forEach(function(o,j){var ol=doc.splitTextToSize(String.fromCharCode(65+j)+") "+o,cw-4);ol.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft+4,y);y+=4.7;});});
-      var ans=doc.splitTextToSize("Respuesta: "+((q.options||[])[q.answer]||""),cw);
-      ans.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=4.7;});
-      var src=doc.splitTextToSize("Fuente: "+(q.source||"Fuente indicada por la IA"),cw);
-      doc.setFontSize(8); src.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=3.8;});
       y+=5;
+    });
+    doc.addPage(); y=marginTop+4;
+    doc.setFont("helvetica","bold"); doc.setFontSize(14);
+    doc.text("Clave de respuestas",marginLeft,y); y+=10;
+    qs.forEach(function(q,i){
+      doc.setFont("helvetica","bold"); doc.setFontSize(10);
+      var ans=doc.splitTextToSize("Pregunta "+(i+1)+": "+((q.options||[])[q.answer]||""),cw);
+      ans.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=4.7;});
+      doc.setFont("helvetica","normal"); doc.setFontSize(8);
+      var src=doc.splitTextToSize("Fuente: "+(q.source||"Fuente indicada por la IA"),cw);
+      src.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=3.8;});
+      y+=4;
     });
     saveBlobFile(doc.output("blob"),safeDownloadName([],topic)+"_examen.pdf");
   }
@@ -2512,7 +2763,10 @@
           document.getElementById("downloadKnowledgeWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,selected.map(function(f){return {name:f.fileName||f.documentTitle||"Fuente"};}),knowledgeTopic);});
         }else{
           var qs=payload.questions||[];
-          target.innerHTML='<div class="panel" style="width:100%;min-height:65vh;max-height:78vh;overflow-y:auto;padding:28px 38px;"><div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+qs.length+' preguntas</div><div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="downloadKnowledgeExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadKnowledgeExamWordBtn">Descargar Word</button></div>'+qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div><ol class="question-options">'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'+(params.showAnswers!==false?'<div class="question-answer"><strong>Respuesta correcta</strong> '+escapeHtml((q.options||[])[q.answer]||"")+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>':'')+'</div>';}).join("")+'</div>';
+          var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div><ol class="question-options">'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol></div>';}).join("");
+          var answerKeyHtml=params.showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml((q.options||[])[q.answer]||"")+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
+          target.innerHTML='<div class="panel" style="width:100%;min-height:65vh;max-height:78vh;overflow-y:auto;padding:28px 38px;"><div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+qs.length+' preguntas</div><div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeKnowledgeExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadKnowledgeExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadKnowledgeExamWordBtn">Descargar Word</button></div>'+questionsHtml+answerKeyHtml+'</div>';
+          document.getElementById("takeKnowledgeExamBtn").addEventListener("click",function(){openExamTake(qs,knowledgeTopic,[]);});
           document.getElementById("downloadKnowledgeExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,knowledgeTopic);});
           document.getElementById("downloadKnowledgeExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,knowledgeTopic);});
         }
@@ -2867,6 +3121,9 @@
 
   document.getElementById("closeReaderBtn").addEventListener("click", closeReader);
   document.getElementById("readerModal").addEventListener("click", function(e){ if(e.target===this) closeReader(); });
+
+  document.getElementById("closeExamTakeBtn").addEventListener("click", closeExamTake);
+  document.getElementById("examTakeModal").addEventListener("click", function(e){ if(e.target===this) closeExamTake(); });
 
   document.getElementById("closeAiUsageBtn").addEventListener("click", closeAiUsageModal);
   document.getElementById("aiUsageModal").addEventListener("click", function(e){ if(e.target===this) closeAiUsageModal(); });
