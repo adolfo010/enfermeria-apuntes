@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.8.1";
+  var APP_VERSION = "0.8.2";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2377,9 +2377,11 @@
       var summary=payload.summary||"";
       if(!summary) throw new Error("La IA no devolvió un resumen.");
       var itemsInfo=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
+      var summaryGenId=payload.generationId||null;
       result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+'<div class="preview-title">Resumen del eje: '+escapeHtml(topic)+'</div>'+
         '<div id="temarioSummaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
-        '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button><button type="button" class="ghost" id="openTemarioGaleriaBtnSummary">Ver figuras en Galería 🗂</button></div>'+
+        '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button><button type="button" class="ghost" id="openTemarioGaleriaBtnSummary">Ver figuras en Galería 🗂</button><button type="button" class="ghost" id="temarioWebSearchBtnSummary">Buscar "'+escapeHtml(topic)+'" en la web con IA 🌐</button></div>'+
+        '<div id="temarioWebSearchStatus"></div>'+
         '<div id="temarioFigures"></div>'+
         '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
       document.getElementById("readTemarioSummaryBtn").addEventListener("click",function(){openReader("Resumen: "+topic,topic,summary);});
@@ -2388,6 +2390,31 @@
       document.getElementById("downloadTemarioSummaryPdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,sourceNames,topic);});
       document.getElementById("downloadTemarioSummaryWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,sourceNames,topic);});
       document.getElementById("openTemarioGaleriaBtnSummary").addEventListener("click",function(){openTemarioGaleria(payload.itemsCovered,topic);});
+      document.getElementById("temarioWebSearchBtnSummary").addEventListener("click",function(){
+        var webBtn=this;
+        var status=document.getElementById("temarioWebSearchStatus");
+        webBtn.disabled=true;
+        webBtn.textContent="Buscando en la web…";
+        status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el complemento (puede tardar un minuto)…';
+        callKnowledge({action:"webSearch",topic:topic})
+          .then(function(res){
+            var addition=(res.content||"").trim();
+            if(!addition) throw new Error("La IA no devolvió contenido.");
+            summary=summary+"\n\n## Información adicional (búsqueda web con IA)\n\n"+addition;
+            document.getElementById("temarioSummaryText").textContent=summary;
+            status.innerHTML='<div class="banner info">✅ Se agregó el contenido de la web al final del resumen.</div>';
+            webBtn.textContent='Buscar "'+topic+'" en la web con IA 🌐';
+            webBtn.disabled=false;
+            if(summaryGenId){
+              callKnowledge({action:"appendSyllabusWebResearch",generationId:summaryGenId,content:addition}).catch(function(){});
+            }
+          })
+          .catch(function(err){
+            status.innerHTML='<div class="banner danger">No se pudo buscar en la web ('+escapeHtml(err.message||"error")+').</div>';
+            webBtn.disabled=false;
+            webBtn.textContent='Buscar "'+topic+'" en la web con IA 🌐';
+          });
+      });
       loadTemarioFigures(payload.itemsCovered,"temarioFigures");
     } else {
       var qs=payload.questions||[];
@@ -3156,10 +3183,11 @@
     }
     callKnowledge(params)
       .then(function(payload){
+        var cacheNote=payload.fromCache?'<div class="banner info" style="margin-bottom:12px;">♻️ Recuperado de una generación anterior — no se volvió a consultar la IA.</div>':'';
         if(mode==="summary"){
           var summary=payload.summary||"";
           if(!summary) throw new Error("La IA no devolvió un resumen.");
-          target.innerHTML='<div class="panel" style="width:100%;min-height:65vh;max-height:78vh;overflow-y:auto;padding:28px 38px;"><div class="preview-title">Resumen con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+selected.length+' fragmentos</div><div id="summaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:16px;">'+escapeHtml(summary)+'</div><div class="summarize-row" style="margin-top:18px;flex-wrap:wrap;"><button type="button" id="readKnowledgeSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyKnowledgeSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadKnowledgePdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadKnowledgeWordBtn">Descargar Word</button></div><details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Fuentes utilizadas</strong> · '+selected.length+' fragmentos</summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+selected.map(function(f){return '• '+escapeHtml((f.fileName||f.documentTitle||"Fuente")+' · '+(f.printedPages?"p. impresa "+f.printedPages:"p. "+(f.pages||"—")));}).join("<br>")+'</div></details></div>';
+          target.innerHTML='<div class="panel" style="width:100%;min-height:65vh;max-height:78vh;overflow-y:auto;padding:28px 38px;"><div class="preview-title">Resumen con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+selected.length+' fragmentos</div>'+cacheNote+'<div id="summaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:16px;">'+escapeHtml(summary)+'</div><div class="summarize-row" style="margin-top:18px;flex-wrap:wrap;"><button type="button" id="readKnowledgeSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyKnowledgeSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadKnowledgePdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadKnowledgeWordBtn">Descargar Word</button></div><details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Fuentes utilizadas</strong> · '+selected.length+' fragmentos</summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+selected.map(function(f){return '• '+escapeHtml((f.fileName||f.documentTitle||"Fuente")+' · '+(f.printedPages?"p. impresa "+f.printedPages:"p. "+(f.pages||"—")));}).join("<br>")+'</div></details></div>';
           document.getElementById("readKnowledgeSummaryBtn").addEventListener("click",function(){openReader("Resumen con IA",knowledgeTopic,summary);});
           document.getElementById("copyKnowledgeSummaryBtn").addEventListener("click",function(){copyToClipboard(summary);});
           document.getElementById("downloadKnowledgePdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,selected.map(function(f){return {name:f.fileName||f.documentTitle||"Fuente"};}),knowledgeTopic);});
@@ -3168,7 +3196,7 @@
           var qs=payload.questions||[];
           var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div>'+((q.options||[]).length?('<ol class="question-options">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'):'')+'</div>';}).join("");
           var answerKeyHtml=params.showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml(questionModelAnswerText(q))+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
-          target.innerHTML='<div class="panel" style="width:100%;min-height:65vh;max-height:78vh;overflow-y:auto;padding:28px 38px;"><div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+qs.length+' preguntas</div><div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeKnowledgeExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadKnowledgeExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadKnowledgeExamWordBtn">Descargar Word</button></div>'+questionsHtml+answerKeyHtml+'</div>';
+          target.innerHTML='<div class="panel" style="width:100%;min-height:65vh;max-height:78vh;overflow-y:auto;padding:28px 38px;"><div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+qs.length+' preguntas</div>'+cacheNote+'<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeKnowledgeExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadKnowledgeExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadKnowledgeExamWordBtn">Descargar Word</button></div>'+questionsHtml+answerKeyHtml+'</div>';
           document.getElementById("takeKnowledgeExamBtn").addEventListener("click",function(){openExamTake(qs,knowledgeTopic,[]);});
           document.getElementById("downloadKnowledgeExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,knowledgeTopic);});
           document.getElementById("downloadKnowledgeExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,knowledgeTopic);});

@@ -292,6 +292,59 @@ Devolvé SOLO JSON válido con esta forma exacta: {"questions":[{"question":"...
   return {questions:Array.isArray(parsed?.questions)?parsed.questions:[],sources:selected.map(sourceMeta)};
 }
 
+function topicCacheKey(topic: string, ids: number[], mode: string, examOptions: any) {
+  const normTopic = cleanText(topic, 300).trim().toLowerCase().replace(/\s+/g, " ");
+  const sortedIds = [...new Set(ids.map(Number).filter(Number.isFinite))].sort((a, b) => a - b).join(",");
+  const optionsKey = mode === "questions"
+    ? `${Number(examOptions?.count) || 10}|${(cleanText(examOptions?.examType, 80) || "Mixto").toLowerCase()}|${Number(examOptions?.difficulty) || 3}`
+    : "";
+  return `${mode}|${optionsKey}|${normTopic}|${sortedIds}`;
+}
+
+async function generateCached(user: any, mode: string, topic: string, ids: number[], examOptions: any = {}) {
+  const hash = await sha256Hex(topicCacheKey(topic, ids, mode, examOptions));
+
+  const found = await rest(`knowledge_topic_generations?cache_hash=eq.${hash}&select=*&limit=1`);
+  if (found.ok) {
+    const rows = await found.json();
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (row) {
+      rest(`knowledge_topic_generations?id=eq.${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ last_used_at: new Date().toISOString(), use_count: (row.use_count || 1) + 1 })
+      }).catch(() => {});
+      return {
+        summary: row.summary ?? undefined,
+        questions: row.questions ?? undefined,
+        sources: row.sources || [],
+        fromCache: true
+      };
+    }
+  }
+
+  const result = await generate(user, mode, topic, ids, examOptions);
+
+  try {
+    await rest("knowledge_topic_generations", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        cache_hash: hash,
+        mode,
+        topic: cleanText(topic, 300) || "tema seleccionado",
+        fragment_ids: [...new Set(ids.map(Number).filter(Number.isFinite))],
+        exam_options: mode === "questions" ? examOptions : null,
+        summary: mode === "summary" ? (result as any).summary : null,
+        questions: mode === "questions" ? (result as any).questions : null,
+        sources: result.sources,
+        created_by: user?.email ?? null
+      })
+    });
+  } catch (_) {}
+
+  return { ...result, fromCache: false };
+}
+
 function parseSyllabusItems(raw: string) {
   const lines = String(raw||"").split(/\r?\n/);
   const items: string[] = [];
@@ -793,6 +846,26 @@ async function webResearch(user: any, topic: string) {
   return { documentId: doc.id, fragmentId: frag.id, title: doc.title, content, citations };
 }
 
+async function appendSyllabusWebResearch(generationId: number, content: string) {
+  const clean = String(content || "").trim();
+  if (!clean) throw new Error("CONTENT_REQUIRED");
+  const r = await rest(`knowledge_syllabus_generations?id=eq.${generationId}&select=summary&limit=1`);
+  if (!r.ok) throw new Error("SYLLABUS_GET_FAILED");
+  const rows = await r.json();
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) throw new Error("SYLLABUS_NOT_FOUND");
+  const base = String(row.summary || "").trim();
+  const newSummary = `${base}\n\n## Información adicional (búsqueda web con IA)\n\n${clean}`;
+  const patch = await rest(`knowledge_syllabus_generations?id=eq.${generationId}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ summary: newSummary })
+  });
+  if (!patch.ok) throw new Error("SYLLABUS_UPDATE_FAILED");
+  const [updated] = await patch.json();
+  return { summary: updated.summary };
+}
+
 function sourceMeta(f:any) {
   return {
     documentId:f.document_id,
@@ -828,7 +901,7 @@ Deno.serve(async (req:Request)=>{
       const mode=body.mode==="questions"?"questions":"summary";
       const topic=cleanText(body.topic,300);
       const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty};
-      return json({ok:true,mode,topic,...await generate(user,mode,topic,ids,examOptions)});
+      return json({ok:true,mode,topic,...await generateCached(user,mode,topic,ids,examOptions)});
     }
     if(action==="webSearch"){
       const topic=cleanText(body.topic,300);
@@ -863,6 +936,12 @@ Deno.serve(async (req:Request)=>{
       const id=Number(body.id);
       if(!Number.isFinite(id)) throw new Error("ATTEMPT_ID_REQUIRED");
       return json({ok:true,...await getExamAttempt(id)});
+    }
+    if(action==="appendSyllabusWebResearch"){
+      const generationId=Number(body.generationId);
+      if(!Number.isFinite(generationId)) throw new Error("GENERATION_ID_REQUIRED");
+      const content=String(body.content||"");
+      return json({ok:true,...await appendSyllabusWebResearch(generationId,content)});
     }
     if(action==="generateReviewExam"){
       const generationId=Number(body.generationId);
