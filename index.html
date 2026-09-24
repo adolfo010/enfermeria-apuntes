@@ -199,6 +199,7 @@
   .exam-nota-banner .num.low{color:var(--danger);}
   .exam-nota-banner.low{background:var(--danger-soft);}
   @media (max-width:600px){.exam-controls{grid-template-columns:1fr;}}
+  .temario-saved-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;}
   .summary-scroll{max-height:430px;overflow:auto;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
   .summarize-row input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
 
@@ -507,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.7.2";
+  var APP_VERSION = "0.7.3";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2320,15 +2321,22 @@
         if(!byTopic[it.topic]){ byTopic[it.topic]=[]; order.push(it.topic); }
         byTopic[it.topic].push(it);
       });
-      wrap.innerHTML=order.map(function(topic){
+      order=order.slice(0,10);
+      wrap.innerHTML='<div class="temario-saved-grid">'+order.map(function(topic){
         var entries=byTopic[topic];
         var date=entries[0].created_at?new Date(entries[0].created_at).toLocaleDateString():"";
+        var concepts=(entries[0].items_covered||[]).slice(1).map(function(ic){return shortItemLabel(ic.item);}).filter(Boolean);
+        var abbrev=concepts.length?concepts.join(" - "):"";
         var btns=entries.map(function(it){
           var modeLabel=it.mode==="summary"?"Resumen 📄":"Examen 📝";
-          return '<button type="button" class="ghost small" data-syllabus-id="'+it.id+'" style="margin-top:8px;margin-right:8px;">'+modeLabel+'</button>';
+          return '<button type="button" class="ghost small" data-syllabus-id="'+it.id+'" style="margin-top:6px;margin-right:5px;">'+modeLabel+'</button>';
         }).join("");
-        return '<div class="question-card"><div class="q-text" style="font-weight:500;">'+escapeHtml(topic)+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+date+'</div><div>'+btns+'</div></div>';
-      }).join("");
+        return '<div class="question-card" style="padding:10px 12px;">'+
+          '<div style="font-weight:600;font-size:13px;">'+escapeHtml(topic)+'</div>'+
+          (abbrev?('<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">'+escapeHtml(abbrev)+'</div>'):'')+
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+date+'</div>'+
+          '<div>'+btns+'</div></div>';
+      }).join("")+'</div>';
       Array.prototype.forEach.call(wrap.querySelectorAll("[data-syllabus-id]"), function(btn){
         btn.addEventListener("click", function(){ openSavedTemario(Number(btn.getAttribute("data-syllabus-id"))); });
       });
