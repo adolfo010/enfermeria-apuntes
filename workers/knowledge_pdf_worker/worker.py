@@ -12,14 +12,17 @@ from openai import OpenAI
 from google import genai
 from google.genai import types
 from pypdf import PdfReader, PdfWriter
+import fitz
+import json
+import re
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 GOOGLE_ACCESS_TOKEN = os.environ.get("GOOGLE_ACCESS_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "openai").lower()
 KNOWLEDGE_USER_ID = os.environ.get("KNOWLEDGE_USER_ID", "")
 DEFAULT_CHUNK_PAGES = 3
@@ -347,8 +350,8 @@ def load_concepts() -> list[dict]:
     ).json()
 
 
-def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int:
-    saved = 0
+def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> dict[int, int]:
+    page_to_fragment: dict[int, int] = {}
     for page in pages:
         content = str(page.get("content") or "").strip()
         if not content:
@@ -408,9 +411,286 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> int
                     },
                     {"Prefer": "resolution=ignore-duplicates"},
                 )
-        saved += 1
-    return saved
+        page_to_fragment[page_number] = int(fragment_id)
+    return page_to_fragment
 
+
+
+# ---------------------------------------------------------------------------
+# FIGURAS: extracción nativa del PDF + Supabase Storage
+# ---------------------------------------------------------------------------
+
+FIGURES_BUCKET = os.environ.get("KNOWLEDGE_FIGURES_BUCKET", "knowledge-figures")
+
+
+def storage_request(path: str, method: str = "GET", body: bytes | None = None, headers: dict | None = None):
+    merged = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+    }
+    if headers:
+        merged.update(headers)
+    response = requests.request(
+        method,
+        f"{SUPABASE_URL}/storage/v1/{path}",
+        headers=merged,
+        data=body,
+        timeout=(30, 120),
+    )
+    response.raise_for_status()
+    return response
+
+
+def upload_figure(storage_path: str, image_bytes: bytes, content_type: str) -> None:
+    # -----------------------------------------------------------------------
+    # La figura original se conserva en el bucket privado existente.
+    # upsert permite reanudar sin duplicar archivos.
+    # -----------------------------------------------------------------------
+    storage_request(
+        f"object/{FIGURES_BUCKET}/{storage_path}",
+        method="POST",
+        body=image_bytes,
+        headers={
+            "Content-Type": content_type,
+            "x-upsert": "true",
+        },
+    )
+
+
+def figure_bbox_string(bbox) -> str:
+    # -----------------------------------------------------------------------
+    # Coordenadas PDF/PyMuPDF: x0,y0,x1,y1.
+    # -----------------------------------------------------------------------
+    return ",".join(f"{float(v):.2f}" for v in bbox)
+
+
+def figure_number_from_text(text: str, image_order: int) -> int | None:
+    # -----------------------------------------------------------------------
+    # Intenta recuperar "Figura 12", "Fig. 12", "Lámina 12", etc.
+    # Si no existe, se deja NULL: no se inventa numeración.
+    # -----------------------------------------------------------------------
+    match = re.search(
+        r"(?i)\b(?:figura|fig\.?|lámina|lamina|ilustración|ilustracion)\s*(?:n[°º.]?\s*)?(\d+)\b",
+        text or "",
+    )
+    return int(match.group(1)) if match else None
+
+
+def figure_caption_from_text(text: str, figure_number: int | None) -> str | None:
+    # -----------------------------------------------------------------------
+    # Captura una línea cercana que parezca ser el epígrafe.
+    # No usa IA para inventar captions.
+    # -----------------------------------------------------------------------
+    lines = [re.sub(r"\s+", " ", x).strip() for x in (text or "").splitlines()]
+    for i, line in enumerate(lines):
+        if not re.search(r"(?i)\b(?:figura|fig\.?|lámina|lamina|ilustración|ilustracion)\b", line):
+            continue
+        if figure_number is not None and str(figure_number) not in line:
+            continue
+        candidate = line[:1000]
+        if len(candidate) >= 8:
+            return candidate
+        if i + 1 < len(lines) and len(lines[i + 1]) >= 8:
+            return f"{candidate} {lines[i + 1]}"[:1000]
+    return None
+
+
+def extract_page_figures(page, page_number: int) -> list[dict]:
+    # -----------------------------------------------------------------------
+    # Extrae imágenes embebidas reales. get_image_info aporta XREF y bbox.
+    # Las imágenes inline sin XREF se rasterizan únicamente en su bbox.
+    # -----------------------------------------------------------------------
+    figures = []
+    seen = set()
+    infos = page.get_image_info(xrefs=True)
+
+    for order, info in enumerate(infos, start=1):
+        bbox = tuple(info.get("bbox") or ())
+        xref = int(info.get("xref") or 0)
+        if len(bbox) != 4:
+            continue
+
+        key = (xref, figure_bbox_string(bbox))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        if xref:
+            try:
+                extracted = page.parent.extract_image(xref)
+                image_bytes = extracted["image"]
+                extension = extracted.get("ext", "png").lower()
+                content_type = {
+                    "jpg": "image/jpeg",
+                    "jpeg": "image/jpeg",
+                    "png": "image/png",
+                    "jp2": "image/jp2",
+                    "webp": "image/webp",
+                }.get(extension, f"image/{extension}")
+            except Exception:
+                image_bytes = None
+                extension = "png"
+                content_type = "image/png"
+        else:
+            # ----------------------------------------------------------------
+            # Imagen inline: se conserva visualmente mediante rasterización.
+            # ----------------------------------------------------------------
+            pix = page.get_pixmap(clip=bbox, dpi=180, alpha=False)
+            image_bytes = pix.tobytes("png")
+            extension = "png"
+            content_type = "image/png"
+
+        if not image_bytes:
+            continue
+
+        figures.append({
+            "page": page_number,
+            "order": order,
+            "xref": xref if xref else None,
+            "bbox": bbox,
+            "bbox_text": figure_bbox_string(bbox),
+            "bytes": image_bytes,
+            "extension": extension,
+            "content_type": content_type,
+            "width": int(info.get("width") or 0),
+            "height": int(info.get("height") or 0),
+        })
+
+    return figures
+
+
+def next_figure_key(document_id: int) -> int:
+    # -----------------------------------------------------------------------
+    # Continúa la numeración existente del documento.
+    # -----------------------------------------------------------------------
+    rows = supabase_request(
+        f"knowledge_figures?document_id=eq.{document_id}&select=figure_key&limit=50000"
+    ).json()
+    numbers = []
+    for row in rows:
+        match = re.fullmatch(r"F(\d+)", str(row.get("figure_key") or ""))
+        if match:
+            numbers.append(int(match.group(1)))
+    return max(numbers, default=0) + 1
+
+
+def save_page_figures(document_id: int, page, page_number: int, fragment_id: int | None, figure_counter: int) -> int:
+    # -----------------------------------------------------------------------
+    # Guarda figuras y crea la relación figura <-> fragmento de la página.
+    # -----------------------------------------------------------------------
+    extracted = extract_page_figures(page, page_number)
+    page_text = page.get_text("text") or ""
+
+    for item in extracted:
+        figure_key = f"F{figure_counter:05d}"
+        storage_path = (
+            f"doc{document_id}/pdf{page_number:04d}_"
+            f"fig{item['order']:02d}_xref{item['xref'] or 'inline'}.{item['extension']}"
+        )
+
+        upload_figure(storage_path, item["bytes"], item["content_type"])
+
+        figure_number = figure_number_from_text(page_text, item["order"])
+        caption = figure_caption_from_text(page_text, figure_number)
+
+        metadata = {
+            "extractor": "native_pdf_image_v1",
+            "image_order": item["order"],
+            "width": item["width"],
+            "height": item["height"],
+            "inline_image": item["xref"] is None,
+        }
+
+        existing = supabase_request(
+            "knowledge_figures"
+            f"?document_id=eq.{document_id}"
+            f"&pdf_page=eq.{page_number}"
+            f"&source_xref=eq.{item['xref'] if item['xref'] is not None else 0}"
+            f"&bbox=eq.{item['bbox_text']}"
+            "&select=id,figure_key&limit=1"
+        ).json()
+
+        if existing:
+            figure_id = existing[0]["id"]
+            figure_key = existing[0]["figure_key"]
+            supabase_request(
+                f"knowledge_figures?id=eq.{figure_id}",
+                "PATCH",
+                {
+                    "storage_path": storage_path,
+                    "figure_number": figure_number,
+                    "caption": caption,
+                    "confidence": 0.98 if item["xref"] is not None else 0.90,
+                    "status": "active",
+                    "metadata": metadata,
+                    "updated_at": __import__("datetime").datetime.now(
+                        __import__("datetime").timezone.utc
+                    ).isoformat(),
+                },
+            )
+        else:
+            response = supabase_request(
+                "knowledge_figures",
+                "POST",
+                {
+                    "document_id": document_id,
+                    "figure_key": figure_key,
+                    "pdf_page": page_number,
+                    "printed_page": None,
+                    "figure_number": figure_number,
+                    "caption": caption,
+                    "storage_path": storage_path,
+                    "source_xref": item["xref"],
+                    "bbox": item["bbox_text"],
+                    "confidence": 0.98 if item["xref"] is not None else 0.90,
+                    "status": "active",
+                    "reviewed": False,
+                    "metadata": metadata,
+                },
+                {"Prefer": "return=representation"},
+            )
+            figure_id = response.json()[0]["id"]
+
+        if fragment_id is not None:
+            supabase_request(
+                "knowledge_fragment_figures",
+                "POST",
+                {
+                    "fragment_id": fragment_id,
+                    "figure_id": figure_id,
+                    "relation_type": "same_page",
+                    "weight": 1.0,
+                },
+                {"Prefer": "resolution=ignore-duplicates"},
+            )
+
+        figure_counter += 1
+
+    return figure_counter
+
+
+def extract_and_save_figures(pdf_path: Path, document_id: int, page_to_fragment: dict[int, int]) -> int:
+    # -----------------------------------------------------------------------
+    # Recorre todas las páginas con PyMuPDF. No manda las imágenes a la IA.
+    # -----------------------------------------------------------------------
+    pdf = fitz.open(str(pdf_path))
+    counter = next_figure_key(document_id)
+
+    try:
+        for page_index in range(len(pdf)):
+            page_number = page_index + 1
+            fragment_id = page_to_fragment.get(page_number)
+            counter = save_page_figures(
+                document_id,
+                pdf[page_index],
+                page_number,
+                fragment_id,
+                counter,
+            )
+    finally:
+        pdf.close()
+
+    return counter - 1
 
 def get_or_create_job(document_id: str, file_id: str, file_name: str, fingerprint: str, total_pages: int, chunk_pages: int) -> dict:
     existing = supabase_request(
@@ -519,7 +799,26 @@ def process_file(file_id: str, chunk_pages: int) -> None:
                         client, chunk_path, meta["name"], start + 1, end
                     )
                     pages = validate_extracted_pages(extracted, start + 1, end)
-                    saved = save_pages(document_id, pages, concepts)
+                    page_to_fragment = save_pages(document_id, pages, concepts)
+
+                    # -------------------------------------------------------
+                    # Las figuras se extraen del PDF original, no de la IA.
+                    # Se vinculan a los fragmentos recién confirmados.
+                    # -------------------------------------------------------
+                    pdf_for_figures = fitz.open(str(source))
+                    try:
+                        figure_counter = next_figure_key(document_id)
+                        for page_number in range(start + 1, end + 1):
+                            page = pdf_for_figures[page_number - 1]
+                            figure_counter = save_page_figures(
+                                document_id,
+                                page,
+                                page_number,
+                                page_to_fragment.get(page_number),
+                                figure_counter,
+                            )
+                    finally:
+                        pdf_for_figures.close()
 
                     processed += end - start
                     next_chunk = chunk_index + 1
@@ -542,7 +841,8 @@ def process_file(file_id: str, chunk_pages: int) -> None:
 
                     print(
                         f"Bloque confirmado: páginas={start + 1}-{end}, "
-                        f"fragmentos={saved}, avance={processed}/{total_pages}"
+                        f"fragmentos={len(page_to_fragment)}, figuras extraídas en el bloque, "
+                        f"avance={processed}/{total_pages}"
                     )
                 except Exception as exc:
                     message = str(exc)[:2000]
