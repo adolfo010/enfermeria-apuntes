@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.7.5";
+  var APP_VERSION = "0.8.0";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1887,6 +1887,77 @@
     });
   }
 
+  async function loadTemarioFigures(itemsCovered, containerId){
+    var container=document.getElementById(containerId);
+    if(!container) return;
+    if(!window.supabase || !supabaseClient) return;
+    var allIds=[], itemByFragment={};
+    (itemsCovered||[]).forEach(function(it){
+      (it.fragmentIds||[]).forEach(function(fid){
+        var id=Number(fid);
+        if(!Number.isFinite(id)) return;
+        allIds.push(id);
+        itemByFragment[id]=it.item;
+      });
+    });
+    allIds=[...new Set(allIds)];
+    if(!allIds.length) return;
+    container.innerHTML='<div style="font-size:12.5px;color:var(--muted);margin-top:14px;"><span class="spin"></span>&nbsp; Buscando figuras relacionadas…</div>';
+
+    var relRes=await supabaseClient.from("knowledge_fragment_figures").select("fragment_id,figure_id").in("fragment_id",allIds);
+    if(relRes.error || !relRes.data || !relRes.data.length){ container.innerHTML=""; return; }
+
+    var figureIds=[...new Set(relRes.data.map(function(r){return r.figure_id;}).filter(Boolean))];
+    if(!figureIds.length){ container.innerHTML=""; return; }
+
+    var figRes=await supabaseClient.from("knowledge_figures").select("id,figure_key,figure_number,caption,pdf_page,printed_page,storage_path,status").in("id",figureIds).eq("status","active");
+    if(figRes.error || !figRes.data || !figRes.data.length){ container.innerHTML=""; return; }
+
+    var figsById={};
+    figRes.data.forEach(function(fig){ figsById[String(fig.id)]=fig; });
+
+    var paths=figRes.data.map(function(fig){return fig.storage_path;}).filter(Boolean);
+    var signedMap={};
+    if(paths.length){
+      var signed=await supabaseClient.storage.from("knowledge-figures").createSignedUrls([...new Set(paths)],900);
+      if(!signed.error && signed.data){
+        signed.data.forEach(function(x){ if(x && x.path && x.signedUrl) signedMap[x.path]=x.signedUrl; });
+      }
+    }
+
+    var byItem={}, order=[], seen={};
+    relRes.data.forEach(function(rel){
+      var fig=figsById[String(rel.figure_id)];
+      if(!fig) return;
+      var item=itemByFragment[rel.fragment_id];
+      if(!item) return;
+      var key=item+"|"+fig.id;
+      if(seen[key]) return;
+      seen[key]=true;
+      if(!byItem[item]){ byItem[item]=[]; order.push(item); }
+      byItem[item].push(fig);
+    });
+
+    if(!order.length){ container.innerHTML=""; return; }
+
+    var html='<div class="preview-title" style="font-size:14px;margin-top:18px;">🖼 Figuras relacionadas</div>';
+    order.forEach(function(item){
+      html+='<div style="margin-top:10px;"><div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;">'+escapeHtml(item)+'</div><div style="display:flex;flex-wrap:wrap;gap:8px;">';
+      byItem[item].forEach(function(fig){
+        var url=signedMap[fig.storage_path];
+        if(!url) return;
+        var label=fig.figure_number ? "Figura "+fig.figure_number : (fig.figure_key || "Figura");
+        var page=fig.printed_page || fig.pdf_page ? " · p. "+(fig.printed_page || fig.pdf_page) : "";
+        var title=label+(fig.caption ? " — "+fig.caption : "")+page;
+        html+='<a href="'+url+'" target="_blank" rel="noopener" title="'+escapeHtml(title)+'" style="display:block;width:88px;height:88px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface-2);flex-shrink:0;">'+
+          '<img src="'+url+'" alt="'+escapeHtml(title)+'" style="width:100%;height:100%;object-fit:cover;display:block;">'+
+        '</a>';
+      });
+      html+='</div></div>';
+    });
+    container.innerHTML=html;
+  }
+
   async function unlinkFigureFromFragment(fragmentId,figureId,cardEl){
     if(currentUserRole!=="ADMIN") return;
     if(!confirm("¿Quitar esta figura de este fragmento? La figura no se elimina, solo se rompe esta asociación puntual.")) return;
@@ -2289,12 +2360,14 @@
       result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+'<div class="preview-title">Resumen del eje: '+escapeHtml(topic)+'</div>'+
         '<div id="temarioSummaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
         '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button></div>'+
+        '<div id="temarioFigures"></div>'+
         '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
       document.getElementById("readTemarioSummaryBtn").addEventListener("click",function(){openReader("Resumen: "+topic,topic,summary);});
       document.getElementById("copyTemarioSummaryBtn").addEventListener("click",function(){copyToClipboard(summary);});
       var sourceNames=(payload.sources||[]).map(function(s){return {name:s.fileName||s.title||"Fuente"};});
       document.getElementById("downloadTemarioSummaryPdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,sourceNames,topic);});
       document.getElementById("downloadTemarioSummaryWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,sourceNames,topic);});
+      loadTemarioFigures(payload.itemsCovered,"temarioFigures");
     } else {
       var qs=payload.questions||[];
       if(!qs.length) throw new Error("La IA no devolvió preguntas.");
@@ -2307,6 +2380,7 @@
       result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+reviewNote+'<div class="preview-title">Examen del eje: '+escapeHtml(topic)+'</div><div class="preview-path">'+qs.length+' preguntas</div>'+
         '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button>'+reviewBtnHtml+'</div>'+
         questionsHtml+answerKeyHtml+
+        '<div id="temarioFigures"></div>'+
         '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo2+'</div></details></div>';
       document.getElementById("takeTemarioExamBtn").addEventListener("click",function(){openExamTake(qs,topic,[],genId);});
       if(genId){
@@ -2314,6 +2388,7 @@
       }
       document.getElementById("downloadTemarioExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,topic);});
       document.getElementById("downloadTemarioExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,topic);});
+      loadTemarioFigures(payload.itemsCovered,"temarioFigures");
     }
   }
 

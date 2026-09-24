@@ -552,19 +552,19 @@ async function generateReviewExam(user: any, generationId: number, examOptions: 
 
   let chars = 0;
   const blocks: string[] = [];
-  const itemsCoveredNew: { item: string; fragmentCount: number }[] = [];
+  const itemsCoveredNew: { item: string; fragmentCount: number; fragmentIds: number[] }[] = [];
   for (const entry of byItem) {
     const frags = entry.fragmentIds.map((id: number) => fragmentMap.get(id)).filter(Boolean);
-    let usedCount = 0;
+    const usedIds: number[] = [];
     const parts: string[] = [];
     for (const f of frags) {
       const n = String((f as any).content || "").length;
       if (chars + n > 140000) continue;
       chars += n;
       parts.push(sourceText(f));
-      usedCount++;
+      usedIds.push(Number((f as any).id));
     }
-    itemsCoveredNew.push({ item: entry.item, fragmentCount: usedCount });
+    itemsCoveredNew.push({ item: entry.item, fragmentCount: usedIds.length, fragmentIds: usedIds });
     if (parts.length) blocks.push(`=== ÍTEM DEL EJE: ${entry.item} ===\n${parts.join("\n\n")}`);
   }
   const source = blocks.join("\n\n---\n\n");
@@ -638,19 +638,19 @@ async function generateFromSyllabusCore(user: any, mode: string, syllabusText: s
 
   let chars = 0;
   const blocks: string[] = [];
-  const itemsCovered: { item: string; fragmentCount: number }[] = [];
+  const itemsCovered: { item: string; fragmentCount: number; fragmentIds: number[] }[] = [];
   for (const entry of byItem) {
     const frags = entry.fragmentIds.map((id: number) => fragmentMap.get(id)).filter(Boolean);
-    let usedCount = 0;
+    const usedIds: number[] = [];
     const parts: string[] = [];
     for (const f of frags) {
       const n = String((f as any).content || "").length;
       if (chars + n > 140000) continue;
       chars += n;
       parts.push(sourceText(f));
-      usedCount++;
+      usedIds.push(Number((f as any).id));
     }
-    itemsCovered.push({ item: entry.item, fragmentCount: usedCount });
+    itemsCovered.push({ item: entry.item, fragmentCount: usedIds.length, fragmentIds: usedIds });
     if (parts.length) {
       blocks.push(`=== ÍTEM DEL EJE: ${entry.item} ===\n${parts.join("\n\n")}`);
     }
