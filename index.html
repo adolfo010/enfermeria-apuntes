@@ -502,7 +502,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.5.0";
+  var APP_VERSION = "0.5.1";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2230,11 +2230,11 @@
     var title="Examen: "+(topic||"Tema");
     var html='<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>@page Section1{size:21cm 29.7cm;margin:1cm 1cm 1cm 2cm;mso-header-margin:.5cm;mso-footer-margin:.5cm;mso-paper-source:0;}div.Section1{page:Section1;}body{font-family:Arial;font-size:11pt;margin:0;line-height:1.5;color:#222}h1{font-size:20pt}.q{margin:0 0 18px}.src{color:#666;font-size:9pt}</style></head><body><div class="Section1"><h1>'+escapeHtml(title)+'</h1>';
     qs.forEach(function(q,i){
-      html+='<div class="q"><strong>Pregunta '+(i+1)+'</strong><p>'+escapeHtml(q.question||"")+'</p><ol>'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol></div>';
+      html+='<div class="q"><strong>Pregunta '+(i+1)+'</strong><p>'+escapeHtml(q.question||"")+'</p>'+((q.options||[]).length?('<ol>'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'):'')+'</div>';
     });
     html+='<h2 style="font-size:14pt;">Clave de respuestas</h2>';
     qs.forEach(function(q,i){
-      html+='<p><strong>Pregunta '+(i+1)+':</strong> '+escapeHtml((q.options||[])[q.answer]||"")+' <span class="src">· '+escapeHtml(q.source||"Fuente indicada por la IA")+'</span></p>';
+      html+='<p><strong>Pregunta '+(i+1)+':</strong> '+escapeHtml(questionModelAnswerText(q))+' <span class="src">· '+escapeHtml(q.source||"Fuente indicada por la IA")+'</span></p>';
     });
     html+='</div></body></html>';
     saveBlobFile(new Blob(["\ufeff",html],{type:"application/msword"}),safeDownloadName([],topic)+"_examen.doc");
@@ -2259,7 +2259,7 @@
     doc.text("Clave de respuestas",marginLeft,y); y+=10;
     qs.forEach(function(q,i){
       doc.setFont("helvetica","bold"); doc.setFontSize(10);
-      var ans=doc.splitTextToSize("Pregunta "+(i+1)+": "+((q.options||[])[q.answer]||""),cw);
+      var ans=doc.splitTextToSize("Pregunta "+(i+1)+": "+questionModelAnswerText(q),cw);
       ans.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=4.7;});
       doc.setFont("helvetica","normal"); doc.setFontSize(8);
       var src=doc.splitTextToSize("Fuente: "+(q.source||"Fuente indicada por la IA"),cw);
@@ -2763,8 +2763,8 @@
           document.getElementById("downloadKnowledgeWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,selected.map(function(f){return {name:f.fileName||f.documentTitle||"Fuente"};}),knowledgeTopic);});
         }else{
           var qs=payload.questions||[];
-          var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div><ol class="question-options">'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol></div>';}).join("");
-          var answerKeyHtml=params.showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml((q.options||[])[q.answer]||"")+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
+          var questionsHtml=qs.map(function(q,i){return '<div class="question-card"><div class="q-number">Pregunta '+(i+1)+'</div><div class="q-text">'+escapeHtml(q.question||"")+'</div>'+((q.options||[]).length?('<ol class="question-options">'+q.options.map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol>'):'')+'</div>';}).join("");
+          var answerKeyHtml=params.showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml(questionModelAnswerText(q))+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
           target.innerHTML='<div class="panel" style="width:100%;min-height:65vh;max-height:78vh;overflow-y:auto;padding:28px 38px;"><div class="preview-title">Examen generado con IA</div><div class="preview-path">'+escapeHtml(knowledgeTopic)+' · '+qs.length+' preguntas</div><div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeKnowledgeExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadKnowledgeExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadKnowledgeExamWordBtn">Descargar Word</button></div>'+questionsHtml+answerKeyHtml+'</div>';
           document.getElementById("takeKnowledgeExamBtn").addEventListener("click",function(){openExamTake(qs,knowledgeTopic,[]);});
           document.getElementById("downloadKnowledgeExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,knowledgeTopic);});

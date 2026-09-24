@@ -275,7 +275,15 @@ async function generate(user:any, mode:string, topic:string, ids:number[], examO
   const count=Math.max(1,Math.min(20,Number(examOptions.count)||10));
   const examType=cleanText(examOptions.examType,80)||"Mixto";
   const difficulty=Math.max(1,Math.min(5,Number(examOptions.difficulty)||3));
-  const prompt=`Generá exactamente ${count} preguntas de examen sobre "${cleanTopic}" usando EXCLUSIVAMENTE las fuentes proporcionadas. Tipo solicitado: ${examType}. Dificultad: ${difficulty}/5. Cada pregunta debe incluir enunciado, opciones cuando corresponda, respuesta correcta y fuente/página. No inventes datos. Evitá preguntas redundantes. Devolvé SOLO JSON válido con esta forma: {"questions":[{"question":"...","options":["...","...","...","..."],"answer":0,"source":"..."}]}. Para tipos que no sean opción múltiple, mantené igualmente una estructura compatible con options/answer cuando sea posible.\n\nFUENTES:\n${source}`;
+  const prompt=`Generá exactamente ${count} preguntas de examen sobre "${cleanTopic}" usando EXCLUSIVAMENTE las fuentes proporcionadas. Tipo solicitado: ${examType}. Dificultad: ${difficulty}/5. No inventes datos. Evitá preguntas redundantes.
+
+Reglas por tipo de pregunta (respetalas estrictamente, NO conviertas todo a opción múltiple):
+- "Opción múltiple": options debe tener exactamente 4 alternativas, y answer el índice (0-3) de la correcta. correctAnswer va vacío ("").
+- "Verdadero/Falso": options debe ser exactamente ["Verdadero","Falso"], y answer el índice (0 o 1) de la correcta. correctAnswer va vacío ("").
+- "Respuesta corta", "Desarrollo" o "Caso clínico": options debe ser un arreglo VACÍO [], answer debe ser null, y correctAnswer debe tener la respuesta modelo completa esperada (no una opción, sino la respuesta real en texto).
+- Si el tipo solicitado es "Mixto", elegí para cada pregunta un type de los de arriba (variá entre opción múltiple, verdadero/falso y preguntas abiertas) y aplicá la regla que corresponda a ese type.
+
+Devolvé SOLO JSON válido con esta forma exacta: {"questions":[{"question":"...","type":"...","options":[],"answer":null,"correctAnswer":"...","source":"..."}]}\n\nFUENTES:\n${source}`;
   const r=await callOpenAI(prompt,10000);
   await recordUsage(user,"knowledgeQuestions",cleanTopic,r.raw,selected);
   let parsed:any;
