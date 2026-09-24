@@ -601,18 +601,29 @@ def save_page_figures(document_id: int, page, page_number: int, fragment_id: int
             "inline_image": item["xref"] is None,
         }
 
-        existing = supabase_request(
+        # ----------------------------------------------------------------
+        # Se consulta por documento/página y se compara XREF+BBOX localmente.
+        # Así también se detectan correctamente las imágenes inline (XREF NULL).
+        # ----------------------------------------------------------------
+        existing_rows = supabase_request(
             "knowledge_figures"
             f"?document_id=eq.{document_id}"
             f"&pdf_page=eq.{page_number}"
-            f"&source_xref=eq.{item['xref'] if item['xref'] is not None else 0}"
-            f"&bbox=eq.{item['bbox_text']}"
-            "&select=id,figure_key&limit=1"
+            "&select=id,figure_key,source_xref,bbox"
+            "&limit=500"
         ).json()
+        existing = next(
+            (
+                row for row in existing_rows
+                if (row.get("source_xref") == item["xref"])
+                and str(row.get("bbox") or "") == item["bbox_text"]
+            ),
+            None,
+        )
 
         if existing:
-            figure_id = existing[0]["id"]
-            figure_key = existing[0]["figure_key"]
+            figure_id = existing["id"]
+            figure_key = existing["figure_key"]
             supabase_request(
                 f"knowledge_figures?id=eq.{figure_id}",
                 "PATCH",
