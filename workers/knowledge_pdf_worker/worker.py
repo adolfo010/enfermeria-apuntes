@@ -738,6 +738,100 @@ def update_job(job_id: int, **fields) -> None:
     supabase_request(f"knowledge_ingest_jobs?id=eq.{job_id}", "PATCH", fields)
 
 
+def require_figure_env() -> None:
+    # -----------------------------------------------------------------------
+    # Modo exclusivo de figuras: NO requiere OPENAI_API_KEY ni GEMINI_API_KEY.
+    # Solo necesita acceso a Supabase y a Google Drive para descargar el PDF.
+    # -----------------------------------------------------------------------
+    required = [
+        ("SUPABASE_URL", SUPABASE_URL),
+        ("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY),
+    ]
+    missing = [name for name, value in required if not value]
+    if missing:
+        raise SystemExit("Faltan secretos: " + ", ".join(missing))
+
+
+def extract_figures_only(file_id: str) -> None:
+    # -----------------------------------------------------------------------
+    # Flujo completamente independiente de IA.
+    #
+    # - descarga el PDF desde Drive
+    # - obtiene las relaciones página -> fragmento ya existentes
+    # - extrae imágenes con PyMuPDF
+    # - guarda las imágenes en Supabase Storage
+    # - registra knowledge_figures y knowledge_fragment_figures
+    #
+    # NO crea clientes OpenAI/Gemini y NO consume créditos de IA.
+    # -----------------------------------------------------------------------
+    require_figure_env()
+    global GOOGLE_ACCESS_TOKEN
+    GOOGLE_ACCESS_TOKEN = google_access_token()
+
+    meta = drive_meta(file_id)
+    if meta.get("mimeType") != "application/pdf":
+        raise SystemExit(f"El archivo no es PDF: {meta.get('mimeType')}")
+
+    document_rows = supabase_request(
+        f"knowledge_documents?drive_file_id=eq.{file_id}"
+        "&select=id,processing_status&limit=1"
+    ).json()
+    if not document_rows:
+        raise RuntimeError(
+            "No existe knowledge_documents para este archivo. "
+            "Primero debe existir el documento en la base de conocimiento."
+        )
+
+    document_id = int(document_rows[0]["id"])
+
+    fragment_rows = supabase_request(
+        f"knowledge_fragments?document_id=eq.{document_id}"
+        "&select=id,page_start,page_end&limit=50000"
+    ).json()
+    page_to_fragment = {}
+    for row in fragment_rows:
+        start = row.get("page_start")
+        end = row.get("page_end")
+        if start is None:
+            continue
+        for page_number in range(int(start), int(end or start) + 1):
+            page_to_fragment[page_number] = int(row["id"])
+
+    with tempfile.TemporaryDirectory(prefix="knowledge-figures-") as tmp:
+        source = Path(tmp) / "source.pdf"
+        print(
+            f"Descargando PDF para extracción local de figuras: "
+            f"{meta['name']} ({meta.get('size', '?')} bytes)..."
+        )
+        drive_download(file_id, source)
+
+        pdf = fitz.open(str(source))
+        counter = next_figure_key(document_id)
+        extracted_count = 0
+
+        try:
+            for page_index in range(len(pdf)):
+                page_number = page_index + 1
+                before = counter
+                counter = save_page_figures(
+                    document_id,
+                    pdf[page_index],
+                    page_number,
+                    page_to_fragment.get(page_number),
+                    counter,
+                )
+                extracted_count += counter - before
+        finally:
+            pdf.close()
+
+    print(
+        f"Extracción local de figuras completada: "
+        f"documento={document_id}, figuras nuevas/procesadas={extracted_count}. "
+        f"No se utilizó IA."
+    )
+
+
+
 def process_file(file_id: str, chunk_pages: int) -> None:
     require_env()
     global GOOGLE_ACCESS_TOKEN
@@ -904,6 +998,7 @@ def main() -> None:
     parser.add_argument("--pdf", type=Path)
     parser.add_argument("--chunk-pages", type=int, default=DEFAULT_CHUNK_PAGES)
     parser.add_argument("--process", action="store_true")
+    parser.add_argument("--extract-figures", action="store_true")
     args = parser.parse_args()
 
     if args.chunk_pages < 1 or args.chunk_pages > 10:
@@ -915,11 +1010,18 @@ def main() -> None:
         print(f"Páginas: {len(reader.pages)}")
         return
 
+    if args.extract_figures and args.file_id:
+        extract_figures_only(args.file_id)
+        return
+
     if args.process and args.file_id:
         process_file(args.file_id, args.chunk_pages)
         return
 
-    parser.error("Usar --process --file-id FILE_ID para procesamiento completo.")
+    parser.error(
+        "Usar --process --file-id FILE_ID para procesamiento completo, "
+        "o --extract-figures --file-id FILE_ID para extracción de figuras sin IA."
+    )
 
 
 if __name__ == "__main__":
