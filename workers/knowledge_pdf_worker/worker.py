@@ -13,7 +13,6 @@ from google import genai
 from google.genai import types
 from pypdf import PdfReader, PdfWriter
 import fitz
-import json
 import re
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
@@ -354,9 +353,15 @@ def save_pages(document_id: str, pages: list[dict], concepts: list[dict]) -> dic
     page_to_fragment: dict[int, int] = {}
     for page in pages:
         content = str(page.get("content") or "").strip()
-        if not content:
-            continue
         page_number = int(page["page"])
+
+        # ----------------------------------------------------------------
+        # Una página puede ser exclusivamente una lámina/figura.
+        # Se conserva como fragmento técnico mínimo para que las figuras
+        # puedan quedar vinculadas y recuperables por página.
+        # ----------------------------------------------------------------
+        if not content:
+            content = "[Página con figura(s) sin texto académico extraíble]"
         page_hash = content_hash(content)
         existing = supabase_request(
             "knowledge_fragments?document_id=eq." + str(document_id)
