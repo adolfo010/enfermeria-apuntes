@@ -507,7 +507,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.7.0";
+  var APP_VERSION = "0.7.1";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2242,6 +2242,16 @@
     renderTemarioSavedList();
   }
 
+  function shortItemLabel(text){
+    var s=String(text||"").replace(/^[A-Za-z][\-\)]\s*/,"").trim();
+    var cut=s.search(/[:.]/);
+    if(cut>0) s=s.slice(0,cut);
+    s=s.replace(/^(el|la|los|las)\s+/i,"").trim();
+    if(!s) return "";
+    s=s.charAt(0).toUpperCase()+s.slice(1);
+    return s.slice(0,30);
+  }
+
   function populateTemarioReselectSelect(){
     var select=document.getElementById("temarioReselectSelect");
     if(!select) return;
@@ -2252,7 +2262,9 @@
       items.forEach(function(it){
         if(seen[it.topic]) return;
         seen[it.topic]=true;
-        html+='<option value="'+it.id+'">'+escapeHtml(it.topic)+'</option>';
+        var concepts=(it.items_covered||[]).slice(1).map(function(ic){return shortItemLabel(ic.item);}).filter(Boolean);
+        var label=it.topic+(concepts.length?(' — '+concepts.join(' - ')):'');
+        html+='<option value="'+it.id+'">'+escapeHtml(label)+'</option>';
       });
       select.innerHTML=html;
     }).catch(function(){});
