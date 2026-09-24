@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.7.4";
+  var APP_VERSION = "0.7.5";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2218,6 +2218,7 @@
       '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;">'+
         '<button type="button" id="temarioSummaryBtn">Generar resumen con IA ✨</button>'+
         '<button type="button" class="ghost" id="temarioExamBtn">Generar examen con IA 📝</button>'+
+        '<button type="button" class="ghost" id="temarioNewBtn">Nuevo eje temático 🆕</button>'+
       '</div>'+
       '<div id="temarioResult" style="margin-top:18px;"></div>'+
       '<div style="margin-top:28px;border-top:1px solid var(--border);padding-top:16px;"><h2>Generaciones guardadas</h2><div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Reabrí un resumen o examen ya generado sin gastar IA de nuevo. Si pedís exactamente el mismo eje con las mismas opciones, también se reutiliza automáticamente.</div><div id="temarioSavedList"></div></div>'+
@@ -2225,6 +2226,13 @@
 
     document.getElementById("temarioSummaryBtn").addEventListener("click",function(){ runTemarioGeneration("summary"); });
     document.getElementById("temarioExamBtn").addEventListener("click",function(){ runTemarioGeneration("questions"); });
+    document.getElementById("temarioNewBtn").addEventListener("click",function(){
+      document.getElementById("temarioInput").value="";
+      document.getElementById("temarioReselectSelect").value="";
+      document.getElementById("temarioReselectMsg").textContent="";
+      document.getElementById("temarioResult").innerHTML="";
+      document.getElementById("temarioInput").focus();
+    });
     document.getElementById("temarioReselectSelect").addEventListener("change",function(e){
       var id=e.target.value;
       var msg=document.getElementById("temarioReselectMsg");
