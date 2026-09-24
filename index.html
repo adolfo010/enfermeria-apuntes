@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.8.0";
+  var APP_VERSION = "0.8.1";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -1745,7 +1745,9 @@
   Array.prototype.forEach.call(document.querySelectorAll(".nav-item[data-section]"), function(btn){
     btn.addEventListener("click", function(){
       if (btn.disabled) return;
-      setActiveSection(btn.getAttribute("data-section"));
+      var section=btn.getAttribute("data-section");
+      if (section === "galeria") { galeriaOverrideSelection=null; galeriaOverrideTitle=null; }
+      setActiveSection(section);
     });
   });
 
@@ -1958,6 +1960,21 @@
     container.innerHTML=html;
   }
 
+  function openTemarioGaleria(itemsCovered, topic){
+    var ids=[];
+    (itemsCovered||[]).forEach(function(it){
+      (it.fragmentIds||[]).forEach(function(fid){
+        var id=Number(fid);
+        if(Number.isFinite(id)) ids.push(id);
+      });
+    });
+    ids=[...new Set(ids)];
+    if(!ids.length){ alert("Todavía no hay fragmentos asociados a este eje para buscar figuras. Probá volver a generarlo."); return; }
+    galeriaOverrideSelection=ids.map(function(id){ return {id:id}; });
+    galeriaOverrideTitle="Imágenes del eje: "+topic;
+    setActiveSection("galeria");
+  }
+
   async function unlinkFigureFromFragment(fragmentId,figureId,cardEl){
     if(currentUserRole!=="ADMIN") return;
     if(!confirm("¿Quitar esta figura de este fragmento? La figura no se elimina, solo se rompe esta asociación puntual.")) return;
@@ -1974,10 +1991,13 @@
   // selección para descargar como ZIP (sin mezclar con el texto). Reusa la
   // misma selección de temas que Vista previa/Resumen/Examen/Preguntas.
   var galeriaSelectedFigureIds={};
+  var galeriaOverrideSelection=null;
+  var galeriaOverrideTitle=null;
 
   function renderGaleriaSection(){
     var wrap=document.getElementById("galeriaSectionBody");
-    var selected=knowledgeSelectedList();
+    var selected=galeriaOverrideSelection || knowledgeSelectedList();
+    var title=galeriaOverrideTitle || "Imágenes de los temas seleccionados";
     if(!wrap) return;
     if(!selected.length){
       wrap.innerHTML='<div class="empty-state"><div class="big">🗂</div>Seleccioná temas en Buscar para ver sus imágenes.</div>';
@@ -1987,7 +2007,7 @@
     wrap.innerHTML=
       '<div class="panel" style="width:100%;min-height:72vh;max-height:78vh;overflow-y:auto;padding:28px 38px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;">'+
-        '<h2 style="font-size:20px;margin:0;">Imágenes de los temas seleccionados</h2>'+
+        '<h2 style="font-size:20px;margin:0;">'+escapeHtml(title)+'</h2>'+
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
           '<span id="galeriaSelectionCount" class="muted" style="font-size:13px;">0 seleccionadas</span>'+
           '<button type="button" class="small ghost" id="galeriaSelectAllBtn">Seleccionar todas</button>'+
@@ -2359,7 +2379,7 @@
       var itemsInfo=(payload.itemsCovered||[]).map(function(it){return '• '+escapeHtml(it.item)+' — '+it.fragmentCount+' fragmento(s) encontrado(s)'+(it.fragmentCount?'':' ⚠️ sin material en la base');}).join("<br>");
       result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+'<div class="preview-title">Resumen del eje: '+escapeHtml(topic)+'</div>'+
         '<div id="temarioSummaryText" style="white-space:pre-wrap;line-height:1.7;margin-top:14px;">'+escapeHtml(summary)+'</div>'+
-        '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button></div>'+
+        '<div class="summarize-row" style="margin-top:16px;flex-wrap:wrap;"><button type="button" id="readTemarioSummaryBtn">Ver en pantalla completa ⛶</button><button type="button" class="ghost" id="copyTemarioSummaryBtn">Copiar resumen 📋</button><button type="button" class="ghost" id="downloadTemarioSummaryPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioSummaryWordBtn">Descargar Word</button><button type="button" class="ghost" id="openTemarioGaleriaBtnSummary">Ver figuras en Galería 🗂</button></div>'+
         '<div id="temarioFigures"></div>'+
         '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo+'</div></details></div>';
       document.getElementById("readTemarioSummaryBtn").addEventListener("click",function(){openReader("Resumen: "+topic,topic,summary);});
@@ -2367,6 +2387,7 @@
       var sourceNames=(payload.sources||[]).map(function(s){return {name:s.fileName||s.title||"Fuente"};});
       document.getElementById("downloadTemarioSummaryPdfBtn").addEventListener("click",function(){downloadSummaryPdf(summary,sourceNames,topic);});
       document.getElementById("downloadTemarioSummaryWordBtn").addEventListener("click",function(){downloadSummaryWord(summary,sourceNames,topic);});
+      document.getElementById("openTemarioGaleriaBtnSummary").addEventListener("click",function(){openTemarioGaleria(payload.itemsCovered,topic);});
       loadTemarioFigures(payload.itemsCovered,"temarioFigures");
     } else {
       var qs=payload.questions||[];
@@ -2378,7 +2399,7 @@
       var answerKeyHtml=showAnswers!==false?('<div class="preview-title" style="font-size:15px;margin-top:18px;">Clave de respuestas</div>'+qs.map(function(q,i){return '<div class="question-answer" style="margin-top:8px;"><strong>Pregunta '+(i+1)+'</strong> '+escapeHtml(questionModelAnswerText(q))+'<div style="margin-top:5px;font-size:12px;">'+escapeHtml(q.source||"Fuente")+'</div></div>';}).join("")):'';
       var reviewBtnHtml=genId?'<button type="button" class="ghost" id="reviewTemarioExamBtn">Repasar lo que fallé 🎯</button>':'';
       result.innerHTML='<div class="panel" style="padding:22px 26px;">'+cacheNote+reviewNote+'<div class="preview-title">Examen del eje: '+escapeHtml(topic)+'</div><div class="preview-path">'+qs.length+' preguntas</div>'+
-        '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button>'+reviewBtnHtml+'</div>'+
+        '<div class="summarize-row" style="margin:12px 0;flex-wrap:wrap;"><button type="button" id="takeTemarioExamBtn">Rendir examen ahora ✏️</button><button type="button" class="ghost" id="downloadTemarioExamPdfBtn">Descargar PDF</button><button type="button" class="ghost" id="downloadTemarioExamWordBtn">Descargar Word</button><button type="button" class="ghost" id="openTemarioGaleriaBtnExam">Ver figuras en Galería 🗂</button>'+reviewBtnHtml+'</div>'+
         questionsHtml+answerKeyHtml+
         '<div id="temarioFigures"></div>'+
         '<details style="margin-top:14px;font-size:13px;color:var(--muted);"><summary style="cursor:pointer;"><strong>Ítems cubiertos</strong></summary><div style="margin-top:8px;padding:10px 12px;border-left:2px solid var(--border);">'+itemsInfo2+'</div></details></div>';
@@ -2388,6 +2409,7 @@
       }
       document.getElementById("downloadTemarioExamPdfBtn").addEventListener("click",function(){downloadKnowledgeQuestionsPdf(qs,topic);});
       document.getElementById("downloadTemarioExamWordBtn").addEventListener("click",function(){downloadKnowledgeQuestionsWord(qs,topic);});
+      document.getElementById("openTemarioGaleriaBtnExam").addEventListener("click",function(){openTemarioGaleria(payload.itemsCovered,topic);});
       loadTemarioFigures(payload.itemsCovered,"temarioFigures");
     }
   }
