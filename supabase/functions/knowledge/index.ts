@@ -888,13 +888,14 @@ function mapCommonsPage(p: any) {
     license: stripHtml(meta.LicenseShortName?.value || meta.License?.value || ""),
     licenseUrl: meta.LicenseUrl?.value || "",
     artist: stripHtml(meta.Artist?.value || ""),
-    credit: stripHtml(meta.Credit?.value || "")
+    credit: stripHtml(meta.Credit?.value || ""),
+    source: "wikimedia"
   };
 }
 
 async function searchCommonsImages(term: string, limit = 12) {
   const cleanTerm = cleanText(term, 200);
-  if (!cleanTerm) return { images: [] };
+  if (!cleanTerm) return [];
 
   const seen = new Set<string>();
   const images: any[] = [];
@@ -916,17 +917,73 @@ async function searchCommonsImages(term: string, limit = 12) {
     }
   }
 
-  return { images };
+  return images;
 }
 
-async function searchCommonsImagesMulti(terms: string[], limitTotal = 12) {
+const OPENI_BASE = "https://openi.nlm.nih.gov";
+
+async function searchOpenIImages(term: string, limit = 6) {
+  const cleanTerm = cleanText(term, 200);
+  if (!cleanTerm) return [];
+  const params = new URLSearchParams({ query: cleanTerm, it: "g", m: "1", n: String(Math.max(1, limit)) });
+  let r: Response;
+  try {
+    r = await fetch(`${OPENI_BASE}/api/search?${params.toString()}`);
+  } catch (_) {
+    return [];
+  }
+  if (!r.ok) return [];
+  const j = await r.json().catch(() => null);
+  const list = Array.isArray(j?.list) ? j.list : [];
+  const images: any[] = [];
+  for (const it of list) {
+    const img = it?.image || {};
+    const thumb = it?.imgGrid150 || it?.imgThumbLarge || it?.imgThumb;
+    if (!thumb) continue;
+    images.push({
+      title: stripHtml(img.caption || it.title || "Imagen médica").slice(0, 250),
+      thumbUrl: `${OPENI_BASE}${thumb}`,
+      fullUrl: `${OPENI_BASE}${it.imgLarge || thumb}`,
+      descriptionUrl: it.pmc_url || it.pubMed_url || `${OPENI_BASE}${it.detailedQueryURL || ""}`,
+      license: "Artículo científico de acceso abierto (PMC)",
+      licenseUrl: "",
+      artist: cleanText(it.authors || "", 200),
+      credit: cleanText(it.journal_title || "", 200),
+      source: "openi"
+    });
+    if (images.length >= limit) break;
+  }
+  return images;
+}
+
+async function imagesForTerm(term: string, limit: number) {
+  const half = Math.max(2, Math.ceil(limit / 2));
+  const [wiki, openi] = await Promise.all([
+    searchCommonsImages(term, half),
+    searchOpenIImages(term, half)
+  ]);
+  const merged: any[] = [];
+  const maxLen = Math.max(wiki.length, openi.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (wiki[i]) merged.push(wiki[i]);
+    if (openi[i]) merged.push(openi[i]);
+  }
+  return merged.slice(0, limit);
+}
+
+async function searchImagesSingle(term: string, limit = 12) {
+  const cleanTerm = cleanText(term, 200);
+  if (!cleanTerm) return { images: [] };
+  return { images: await imagesForTerm(cleanTerm, limit) };
+}
+
+async function searchImagesMulti(terms: string[], limitTotal = 12) {
   const cleanTerms = [...new Set(terms.map(t => cleanText(t, 200)).filter(Boolean))].slice(0, 6);
   if (!cleanTerms.length) return { images: [] };
   const perTerm = Math.max(3, Math.ceil(limitTotal / cleanTerms.length));
   const results: any[][] = [];
   for (const t of cleanTerms) {
-    const { images } = await searchCommonsImages(t, perTerm);
-    results.push(images);
+    results.push(await imagesForTerm(t, perTerm));
   }
   const seen = new Set<string>();
   const merged: any[] = [];
@@ -1010,10 +1067,10 @@ Deno.serve(async (req:Request)=>{
     if(action==="searchImages"){
       const terms=Array.isArray(body.terms)?body.terms.map((t:any)=>cleanText(t,200)).filter(Boolean):[];
       if(terms.length){
-        return json({ok:true,...await searchCommonsImagesMulti(terms)});
+        return json({ok:true,...await searchImagesMulti(terms)});
       }
       const term=cleanText(body.term,200);
-      return json({ok:true,...await searchCommonsImages(term)});
+      return json({ok:true,...await searchImagesSingle(term)});
     }
     if(action==="gradeAnswers"){
       const topic=cleanText(body.topic,300);
