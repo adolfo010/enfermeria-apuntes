@@ -1,0 +1,24 @@
+name: Knowledge PDF Worker Tests
+
+on:
+  push:
+    branches:
+      - architecture/knowledge-base-v1
+    paths:
+      - "workers/knowledge_pdf_worker/**"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: architecture/knowledge-base-v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias
+        run: pip install -r workers/knowledge_pdf_worker/requirements.txt pytest
+      - name: Ejecutar pruebas
+        run: pytest -q workers/knowledge_pdf_worker/test_worker.py
