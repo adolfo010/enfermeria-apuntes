@@ -796,12 +796,13 @@ async function gradeAnswers(user:any, topic:string, items:any[]) {
 const WEB_IA_WARNING = "⚠️ Contenido generado por IA a partir de una búsqueda web en el momento de la consulta. No es un libro de cátedra verificado: puede contener errores o imprecisiones. Usar como apoyo y confirmar con la bibliografía oficial.";
 
 async function webResearch(user: any, topic: string) {
-  const cleanTopic = cleanText(topic, 300);
+  const cleanTopic = cleanText(topic, 1200);
   if (!cleanTopic) throw new Error("TOPIC_REQUIRED");
-  const prompt = `Sos un asistente académico que ayuda a una estudiante de Licenciatura en Enfermería a armar un apunte de estudio sobre "${cleanTopic}" (anatomía/fisiología humana, contexto de una materia introductoria de estructura y función del cuerpo humano).\n\nBuscá información en la web en fuentes confiables (universidades, sociedades científicas, portales médicos/enfermería reconocidos). Redactá un apunte claro y organizado en español, con títulos y viñetas, en tus propias palabras (no copies texto textual de ninguna fuente). Si hay datos que no encontrás con confianza, decilo en vez de inventarlos.`;
+  const shortTopic = cleanTopic.length > 150 ? cleanTopic.slice(0, 150).trim() + "…" : cleanTopic;
+  const prompt = `Sos un asistente académico que ayuda a una estudiante de Licenciatura en Enfermería a armar un apunte de estudio sobre los siguientes temas/ítems (anatomía/fisiología humana, contexto de una materia introductoria de estructura y función del cuerpo humano):\n\n"${cleanTopic}"\n\nBuscá información en la web en fuentes confiables (universidades, sociedades científicas, portales médicos/enfermería reconocidos) sobre CADA uno de esos temas/ítems. Redactá un apunte claro y organizado en español, con un título o subtítulo por cada tema/ítem cubierto, en tus propias palabras (no copies texto textual de ninguna fuente). Si hay datos que no encontrás con confianza, decilo en vez de inventarlos. No le pidas al usuario que te aclare o complete la información: trabajá directamente con lo que se te dio arriba.`;
   const r = await callOpenAI(prompt, 6000, [{ type: "web_search" }]);
   if (!r.text.trim()) throw new Error("EMPTY_WEB_RESEARCH");
-  await recordUsage(user, "knowledgeWebResearch", cleanTopic, r.raw, []);
+  await recordUsage(user, "knowledgeWebResearch", shortTopic, r.raw, []);
 
   const citations = r.citations || [];
   const citationsText = citations.length
@@ -814,8 +815,8 @@ async function webResearch(user: any, topic: string) {
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({
       drive_file_id: null,
-      file_name: `${cleanTopic} (IA + Web)`,
-      title: `${cleanTopic} (IA + Web, no verificado)`,
+      file_name: `${shortTopic} (IA + Web)`,
+      title: `${shortTopic} (IA + Web, no verificado)`,
       source_type: "ia_web",
       subject_area: "Anatomia",
       page_count: 1,
@@ -837,7 +838,7 @@ async function webResearch(user: any, topic: string) {
       tipo_contenido: "texto",
       extraction_method: "ia_web_search",
       estado_fragmento: "COMPLETO",
-      ruta: `${cleanTopic} (IA + Web, no verificado)`
+      ruta: `${shortTopic} (IA + Web, no verificado)`
     })
   });
   if (!fragRes.ok) throw new Error("WEB_FRAGMENT_SAVE_FAILED");

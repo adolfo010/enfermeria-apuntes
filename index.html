@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.8.3";
+  var APP_VERSION = "0.8.4";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2396,7 +2396,10 @@
         webBtn.disabled=true;
         webBtn.textContent="Buscando en la web…";
         status.innerHTML='<span class="spin"></span>&nbsp; Consultando fuentes en la web y armando el complemento (puede tardar un minuto)…';
-        callKnowledge({action:"webSearch",topic:topic})
+        var itemLabels=(payload.itemsCovered||[]).map(function(it){return it.item;}).filter(Boolean);
+        var webSearchTopic=itemLabels.length ? (topic+": "+itemLabels.join("; ")) : topic;
+        var imageSearchTerm=itemLabels.length ? shortItemLabel(itemLabels[0])||topic : topic;
+        callKnowledge({action:"webSearch",topic:webSearchTopic})
           .then(function(res){
             var addition=(res.content||"").trim();
             if(!addition) throw new Error("La IA no devolvió contenido.");
@@ -2408,7 +2411,7 @@
             if(summaryGenId){
               callKnowledge({action:"appendSyllabusWebResearch",generationId:summaryGenId,content:addition}).catch(function(){});
             }
-            callKnowledge({action:"searchImages",term:topic}).then(function(imgRes){
+            callKnowledge({action:"searchImages",term:imageSearchTerm}).then(function(imgRes){
               var cont=document.getElementById("temarioWebImages");
               if(cont) cont.innerHTML=renderCommonsImageGrid(imgRes.images||[])||'<div class="muted" style="font-size:12px;">No se encontraron imágenes relacionadas.</div>';
             }).catch(function(){
