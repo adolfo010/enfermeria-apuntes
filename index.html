@@ -749,16 +749,33 @@
     setTimeout(function(){ div.remove(); }, 6000);
   }
 
+  function findAvailableFileName(dirHandle, filename){
+    var dot = filename.lastIndexOf(".");
+    var base = dot >= 0 ? filename.slice(0, dot) : filename;
+    var ext = dot >= 0 ? filename.slice(dot) : "";
+    function tryName(candidate, n){
+      return dirHandle.getFileHandle(candidate).then(function(){
+        return tryName(base + " (" + (n + 1) + ")" + ext, n + 1);
+      }).catch(function(err){
+        if (err && err.name === "NotFoundError") return candidate;
+        throw err;
+      });
+    }
+    return tryName(filename, 0);
+  }
+
   function saveBlobFile(blob, filename){
     if (downloadDirHandle){
       return ensureDirPermission().then(function(ok){
         if (!ok) return classicDownload(blob, filename);
-        return downloadDirHandle.getFileHandle(filename, { create: true }).then(function(fileHandle){
-          return fileHandle.createWritable();
-        }).then(function(writable){
-          return writable.write(blob).then(function(){ return writable.close(); });
-        }).then(function(){
-          showDownloadToast('Guardado en "' + downloadDirHandle.name + '": ' + filename);
+        return findAvailableFileName(downloadDirHandle, filename).then(function(uniqueName){
+          return downloadDirHandle.getFileHandle(uniqueName, { create: true }).then(function(fileHandle){
+            return fileHandle.createWritable();
+          }).then(function(writable){
+            return writable.write(blob).then(function(){ return writable.close(); });
+          }).then(function(){
+            showDownloadToast('Guardado en "' + downloadDirHandle.name + '": ' + uniqueName);
+          });
         }).catch(function(){ return classicDownload(blob, filename); });
       });
     }
@@ -1242,7 +1259,7 @@
 
   function buildExamText(qs,chosen,topic,includeAnswers){
      var out=(topic ? "EXAMEN: "+topic : "PREGUNTAS DE EXAMEN")+"\n\n";
-     out+="Material: "+chosen.map(function(f){return f.name;}).join(" · ")+"\n\n";
+     out+="Material: "+uniqueSourceNames(chosen).join(" · ")+"\n\n";
      qs.forEach(function(q,idx){
        out+="PREGUNTA "+(idx+1)+" — "+(q.type||"")+"\n"+(q.question||"")+"\n";
        if(Array.isArray(q.options)) q.options.forEach(function(o,i){out+=String.fromCharCode(65+i)+") "+o+"\n";});
@@ -1253,18 +1270,19 @@
    }
    function downloadExamWord(textContent,chosen,topic){
      var title=topic ? "Examen: "+topic : "Preguntas de examen";
-     var names=chosen.map(function(f){return f.name;}).join(" · ");
-     var html='<!doctype html><html><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>body{font-family:Arial,sans-serif;margin:2cm;line-height:1.5;color:#222;white-space:pre-wrap}h1{font-size:20pt}p{color:#666;font-size:10pt;border-bottom:1px solid #ddd;padding-bottom:10px}</style></head><body><h1>'+escapeHtml(title)+'</h1><p>'+escapeHtml(names)+'</p>'+escapeHtml(textContent).replace(/\n/g,"<br>")+'</body></html>';
+     var names=uniqueSourceNames(chosen).join(" · ");
+     var html='<!doctype html><html><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>@page{size:21cm 29.7cm;margin:1cm 1cm 1cm 2cm;}body{font-family:Arial,sans-serif;margin:0;line-height:1.5;color:#222;white-space:pre-wrap}h1{font-size:20pt}p{color:#666;font-size:10pt;border-bottom:1px solid #ddd;padding-bottom:10px}</style></head><body><h1>'+escapeHtml(title)+'</h1><p>'+escapeHtml(names)+'</p>'+escapeHtml(textContent).replace(/\n/g,"<br>")+'</body></html>';
      var blob=new Blob(["\ufeff",html],{type:"application/msword"});
      saveBlobFile(blob, safeDownloadName(chosen,topic)+"_examen.doc");
    }
    function downloadExamPdf(textContent,chosen,topic){
      if(!window.jspdf||!window.jspdf.jsPDF){alert("No se pudo cargar el generador de PDF. Recargá la página e intentá nuevamente.");return;}
      var JsPDF=window.jspdf.jsPDF,doc=new JsPDF({unit:"mm",format:"a4"}),title=topic ? "Examen: "+topic : "Preguntas de examen";
-     var names=chosen.map(function(f){return f.name;}).join(" · "),margin=18,pageWidth=210,pageHeight=297,y=20;
-     doc.setFont("helvetica","bold");doc.setFontSize(16);doc.text(doc.splitTextToSize(title,pageWidth-margin*2),margin,y);y+=12;
-     doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.text(doc.splitTextToSize(names,pageWidth-margin*2),margin,y);y+=10;
-     doc.setFontSize(10.5);doc.splitTextToSize(textContent,pageWidth-margin*2).forEach(function(line){if(y>pageHeight-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=5.3;});
+     var names=uniqueSourceNames(chosen).join(" · ");
+     var marginLeft=20,marginRight=10,marginTop=10,marginBottom=10,pageWidth=210,pageHeight=297,contentWidth=pageWidth-marginLeft-marginRight,y=marginTop+4;
+     doc.setFont("helvetica","bold");doc.setFontSize(16);doc.text(doc.splitTextToSize(title,contentWidth),marginLeft,y);y+=12;
+     doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.text(doc.splitTextToSize(names,contentWidth),marginLeft,y);y+=10;
+     doc.setFontSize(10.5);doc.splitTextToSize(textContent,contentWidth).forEach(function(line){if(y>pageHeight-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=5.3;});
      saveBlobFile(doc.output("blob"), safeDownloadName(chosen,topic)+"_examen.pdf");
    }
 
@@ -1919,11 +1937,22 @@
     return base.replace(/[^a-z0-9áéíóúüñ _-]/gi, "").trim().replace(/\s+/g, "_").slice(0,80) || "resumen";
   }
 
+  function uniqueSourceNames(chosen){
+    var seen = {}, out = [];
+    (chosen || []).forEach(function(f){
+      var name = f.name;
+      if (!name || seen[name]) return;
+      seen[name] = true;
+      out.push(name);
+    });
+    return out;
+  }
+
   function downloadSummaryWord(summary, chosen, topic){
     var title = topic ? "Resumen: " + topic : "Resumen con IA";
-    var names = (chosen || []).map(function(f){ return f.name; }).join(" · ");
+    var names = uniqueSourceNames(chosen).join(" · ");
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title>' +
-      '<style>body{font-family:Arial,sans-serif;margin:2cm;line-height:1.5;color:#222}h1{font-size:20pt}p.meta{color:#666;font-size:10pt;border-bottom:1px solid #ddd;padding-bottom:10px}.summary{white-space:pre-wrap;font-size:11pt}</style>' +
+      '<style>@page{size:21cm 29.7cm;margin:1cm 1cm 1cm 2cm;}body{font-family:Arial,sans-serif;margin:0;line-height:1.5;color:#222}h1{font-size:20pt}p.meta{color:#666;font-size:10pt;border-bottom:1px solid #ddd;padding-bottom:10px}.summary{white-space:pre-wrap;font-size:11pt}</style>' +
       '</head><body><h1>' + escapeHtml(title) + '</h1><p class="meta">' + escapeHtml(names) + '</p><div class="summary">' + escapeHtml(summary) + '</div></body></html>';
     var blob = new Blob(["\ufeff", html], {type:"application/msword"});
     saveBlobFile(blob, safeDownloadName(chosen, topic) + ".doc");
@@ -1937,27 +1966,28 @@
     var JsPDF = window.jspdf.jsPDF;
     var doc = new JsPDF({unit:"mm", format:"a4"});
     var title = topic ? "Resumen: " + topic : "Resumen con IA";
-    var names = (chosen || []).map(function(f){ return f.name; }).join(" · ");
-    var margin = 18, pageWidth = 210, pageHeight = 297, y = 20;
+    var names = uniqueSourceNames(chosen).join(" · ");
+    var marginLeft = 20, marginRight = 10, marginTop = 10, marginBottom = 10;
+    var pageWidth = 210, pageHeight = 297, contentWidth = pageWidth - marginLeft - marginRight, y = marginTop + 4;
     doc.setFont("helvetica","bold"); doc.setFontSize(16);
-    var titleLines = doc.splitTextToSize(title, pageWidth - margin*2);
-    doc.text(titleLines, margin, y); y += titleLines.length * 7;
+    var titleLines = doc.splitTextToSize(title, contentWidth);
+    doc.text(titleLines, marginLeft, y); y += titleLines.length * 7;
     doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
-    var nameLines = doc.splitTextToSize(names, pageWidth - margin*2);
-    doc.text(nameLines, margin, y); y += nameLines.length * 4 + 6;
+    var nameLines = doc.splitTextToSize(names, contentWidth);
+    doc.text(nameLines, marginLeft, y); y += nameLines.length * 4 + 6;
     doc.setFontSize(10.5);
-    var lines = doc.splitTextToSize(summary, pageWidth - margin*2);
+    var lines = doc.splitTextToSize(summary, contentWidth);
     var lineHeight = 5.3;
     lines.forEach(function(line){
-      if (y > pageHeight - margin){ doc.addPage(); y = margin; }
-      doc.text(line, margin, y); y += lineHeight;
+      if (y > pageHeight - marginBottom){ doc.addPage(); y = marginTop + 4; }
+      doc.text(line, marginLeft, y); y += lineHeight;
     });
     saveBlobFile(doc.output("blob"), safeDownloadName(chosen, topic) + ".pdf");
   }
 
   function downloadKnowledgeQuestionsWord(qs, topic){
     var title="Examen: "+(topic||"Tema");
-    var html='<!doctype html><html><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>body{font-family:Arial;margin:2cm;line-height:1.5;color:#222}h1{font-size:20pt}.q{margin:0 0 18px}.src{color:#666;font-size:9pt}</style></head><body><h1>'+escapeHtml(title)+'</h1>';
+    var html='<!doctype html><html><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>@page{size:21cm 29.7cm;margin:1cm 1cm 1cm 2cm;}body{font-family:Arial;margin:0;line-height:1.5;color:#222}h1{font-size:20pt}.q{margin:0 0 18px}.src{color:#666;font-size:9pt}</style></head><body><h1>'+escapeHtml(title)+'</h1>';
     qs.forEach(function(q,i){
       html+='<div class="q"><strong>Pregunta '+(i+1)+'</strong><p>'+escapeHtml(q.question||"")+'</p><ol>'+(q.options||[]).map(function(o){return '<li>'+escapeHtml(o)+'</li>';}).join("")+'</ol><p><strong>Respuesta correcta:</strong> '+escapeHtml((q.options||[])[q.answer]||"")+'</p><div class="src">'+escapeHtml(q.source||"Fuente indicada por la IA")+'</div></div>';
     });
@@ -1968,19 +1998,19 @@
   function downloadKnowledgeQuestionsPdf(qs, topic){
     if(!window.jspdf || !window.jspdf.jsPDF){ alert("No se pudo cargar el generador de PDF. Recargá la página."); return; }
     var JsPDF=window.jspdf.jsPDF, doc=new JsPDF({unit:"mm",format:"a4"});
-    var margin=18,w=210,h=297,y=20;
+    var marginLeft=20,marginRight=10,marginTop=10,marginBottom=10,w=210,h=297,cw=w-marginLeft-marginRight,y=marginTop+4;
     doc.setFont("helvetica","bold"); doc.setFontSize(16);
-    doc.text(doc.splitTextToSize("Examen: "+(topic||"Tema"),w-margin*2),margin,y); y+=12;
+    doc.text(doc.splitTextToSize("Examen: "+(topic||"Tema"),cw),marginLeft,y); y+=12;
     qs.forEach(function(q,i){
       doc.setFont("helvetica","bold"); doc.setFontSize(11);
-      var ql=doc.splitTextToSize("Pregunta "+(i+1)+": "+(q.question||""),w-margin*2);
-      ql.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=5;});
+      var ql=doc.splitTextToSize("Pregunta "+(i+1)+": "+(q.question||""),cw);
+      ql.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=5;});
       doc.setFont("helvetica","normal"); doc.setFontSize(10);
-      (q.options||[]).forEach(function(o,j){var ol=doc.splitTextToSize(String.fromCharCode(65+j)+") "+o,w-margin*2-4);ol.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin+4,y);y+=4.7;});});
-      var ans=doc.splitTextToSize("Respuesta: "+((q.options||[])[q.answer]||""),w-margin*2);
-      ans.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=4.7;});
-      var src=doc.splitTextToSize("Fuente: "+(q.source||"Fuente indicada por la IA"),w-margin*2);
-      doc.setFontSize(8); src.forEach(function(line){if(y>h-margin){doc.addPage();y=margin;}doc.text(line,margin,y);y+=3.8;});
+      (q.options||[]).forEach(function(o,j){var ol=doc.splitTextToSize(String.fromCharCode(65+j)+") "+o,cw-4);ol.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft+4,y);y+=4.7;});});
+      var ans=doc.splitTextToSize("Respuesta: "+((q.options||[])[q.answer]||""),cw);
+      ans.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=4.7;});
+      var src=doc.splitTextToSize("Fuente: "+(q.source||"Fuente indicada por la IA"),cw);
+      doc.setFontSize(8); src.forEach(function(line){if(y>h-marginBottom){doc.addPage();y=marginTop+4;}doc.text(line,marginLeft,y);y+=3.8;});
       y+=5;
     });
     saveBlobFile(doc.output("blob"),safeDownloadName([],topic)+"_examen.pdf");
