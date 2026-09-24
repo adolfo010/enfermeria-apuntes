@@ -507,7 +507,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.7.1";
+  var APP_VERSION = "0.7.2";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2204,7 +2204,7 @@
       '<div style="margin-bottom:18px;">'+
         '<label for="temarioReselectSelect" style="font-weight:600;font-size:13px;">Ejes temáticos ya cargados</label>'+
         '<select id="temarioReselectSelect" style="width:100%;margin-top:6px;padding:9px 10px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);"><option value="">— Elegí uno para reeditarlo —</option></select>'+
-        '<div id="temarioReselectPreview" style="margin-top:8px;font-size:12.5px;color:var(--muted);white-space:pre-wrap;"></div>'+
+        '<div id="temarioReselectMsg" style="margin-top:6px;font-size:12.5px;color:var(--muted);"></div>'+
       '</div>'+
       '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Pegá acá el título y los ítems de UN eje temático (como te lo da la cátedra), o elegí uno de arriba para editarlo. El sistema busca solo, en toda la base, el material de cada ítem — no hace falta seleccionar archivos ni fragmentos. Para temarios largos, cargá un eje por vez.</div>'+
       '<textarea id="temarioInput" placeholder="Ejemplo:&#10;EJE TEMÁTICO N° 2: ESQUELETO AXIAL (cabeza-cara-cuello-raquis-tórax)&#10;Cabeza: Esqueleto. Huesos. Divisiones. Orificios de la base del cráneo. Puntos del cráneo. El hueso temporal: función. Descripción general.&#10;Regiones. Órbitas. Definición. Contenido. Relaciones.&#10;Cuello: morfología. División. Esqueleto. Vísceras del cuello. Arterias. Venas. Músculos. Nervios." style="width:100%;min-height:220px;padding:12px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical;"></textarea>'+
@@ -2226,16 +2226,15 @@
     document.getElementById("temarioExamBtn").addEventListener("click",function(){ runTemarioGeneration("questions"); });
     document.getElementById("temarioReselectSelect").addEventListener("change",function(e){
       var id=e.target.value;
-      var preview=document.getElementById("temarioReselectPreview");
-      if(!id){ preview.textContent=""; return; }
-      preview.textContent="Cargando…";
+      var msg=document.getElementById("temarioReselectMsg");
+      if(!id){ msg.textContent=""; return; }
+      msg.textContent="Cargando…";
       callKnowledge({action:"getSyllabusGeneration",id:Number(id)}).then(function(payload){
         document.getElementById("temarioInput").value=payload.syllabusText||"";
-        var itemsPreview=(payload.itemsCovered||[]).map(function(it){return '• '+it.item;}).join("\n");
-        preview.textContent=itemsPreview;
+        msg.textContent="✓ Cargado en el campo de abajo, listo para editar.";
         document.getElementById("temarioInput").focus();
       }).catch(function(err){
-        preview.textContent="No se pudo cargar ("+(err.message||"error")+").";
+        msg.textContent="No se pudo cargar ("+(err.message||"error")+").";
       });
     });
     populateTemarioReselectSelect();
@@ -2316,14 +2315,22 @@
     callKnowledge({action:"listSyllabusGenerations"}).then(function(payload){
       var items=payload.items||[];
       if(!items.length){ wrap.innerHTML='<div style="font-size:13px;color:var(--muted);">Todavía no hay ejes generados guardados.</div>'; return; }
-      wrap.innerHTML=items.map(function(it){
-        var date=it.created_at?new Date(it.created_at).toLocaleDateString():"";
-        var modeLabel=it.mode==="summary"?"Resumen":"Examen";
-        var itemCount=(it.items_covered||[]).length;
-        return '<div class="question-card" style="cursor:pointer;" data-syllabus-id="'+it.id+'"><div class="q-number">'+modeLabel+' · '+date+' · usado '+(it.use_count||1)+' vez/veces</div><div class="q-text" style="font-weight:500;">'+escapeHtml(it.topic)+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">'+itemCount+' ítem(s) del eje</div></div>';
+      var byTopic={}, order=[];
+      items.forEach(function(it){
+        if(!byTopic[it.topic]){ byTopic[it.topic]=[]; order.push(it.topic); }
+        byTopic[it.topic].push(it);
+      });
+      wrap.innerHTML=order.map(function(topic){
+        var entries=byTopic[topic];
+        var date=entries[0].created_at?new Date(entries[0].created_at).toLocaleDateString():"";
+        var btns=entries.map(function(it){
+          var modeLabel=it.mode==="summary"?"Resumen 📄":"Examen 📝";
+          return '<button type="button" class="ghost small" data-syllabus-id="'+it.id+'" style="margin-top:8px;margin-right:8px;">'+modeLabel+'</button>';
+        }).join("");
+        return '<div class="question-card"><div class="q-text" style="font-weight:500;">'+escapeHtml(topic)+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+date+'</div><div>'+btns+'</div></div>';
       }).join("");
-      Array.prototype.forEach.call(wrap.querySelectorAll("[data-syllabus-id]"), function(card){
-        card.addEventListener("click", function(){ openSavedTemario(Number(card.getAttribute("data-syllabus-id"))); });
+      Array.prototype.forEach.call(wrap.querySelectorAll("[data-syllabus-id]"), function(btn){
+        btn.addEventListener("click", function(){ openSavedTemario(Number(btn.getAttribute("data-syllabus-id"))); });
       });
     }).catch(function(err){
       wrap.innerHTML='<div class="banner danger">No se pudo cargar el historial ('+escapeHtml(err.message||"error")+').</div>';
