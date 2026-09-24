@@ -370,6 +370,25 @@ function syllabusCacheKey(syllabusText: string, mode: string, examOptions: any) 
   return `${mode}|${optionsKey}|${norm}`;
 }
 
+async function ensureItemFragmentIds(row: any) {
+  const itemsCovered = Array.isArray(row.items_covered) ? row.items_covered : [];
+  const needsBackfill = itemsCovered.length > 0 && itemsCovered.some((it: any) => !Array.isArray(it.fragmentIds));
+  if (!needsBackfill) return itemsCovered;
+  const itemLabels = itemsCovered.map((it: any) => it.item);
+  const { byItem } = await gatherSyllabusFragments(itemLabels);
+  const idsByItem = new Map(byItem.map((e: any) => [e.item, e.fragmentIds]));
+  const updated = itemsCovered.map((it: any) => ({
+    item: it.item,
+    fragmentCount: it.fragmentCount,
+    fragmentIds: it.fragmentIds || idsByItem.get(it.item) || []
+  }));
+  rest(`knowledge_syllabus_generations?id=eq.${row.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ items_covered: updated })
+  }).catch(() => {});
+  return updated;
+}
+
 async function generateFromSyllabus(user: any, mode: string, syllabusText: string, examOptions: any = {}) {
   const hash = await sha256Hex(syllabusCacheKey(syllabusText, mode, examOptions));
 
@@ -382,11 +401,12 @@ async function generateFromSyllabus(user: any, mode: string, syllabusText: strin
         method: "PATCH",
         body: JSON.stringify({ last_used_at: new Date().toISOString(), use_count: (row.use_count || 1) + 1 })
       }).catch(() => {});
+      const itemsCovered = await ensureItemFragmentIds(row);
       return {
         summary: row.summary ?? undefined,
         questions: row.questions ?? undefined,
         topic: row.topic,
-        itemsCovered: row.items_covered || [],
+        itemsCovered,
         sources: row.sources || [],
         fromCache: true,
         generationId: row.id
@@ -435,12 +455,13 @@ async function getSyllabusGeneration(id: number) {
   const rows = await r.json();
   const row = Array.isArray(rows) ? rows[0] : null;
   if (!row) throw new Error("SYLLABUS_NOT_FOUND");
+  const itemsCovered = await ensureItemFragmentIds(row);
   return {
     generationId: row.id,
     summary: row.summary ?? undefined,
     questions: row.questions ?? undefined,
     topic: row.topic,
-    itemsCovered: row.items_covered || [],
+    itemsCovered,
     sources: row.sources || [],
     syllabusText: row.syllabus_text,
     mode: row.mode
