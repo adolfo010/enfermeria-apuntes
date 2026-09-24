@@ -424,7 +424,7 @@ async function generateFromSyllabus(user: any, mode: string, syllabusText: strin
 }
 
 async function listSyllabusGenerations() {
-  const r = await rest(`knowledge_syllabus_generations?select=id,mode,topic,items_covered,created_at,last_used_at,use_count&order=last_used_at.desc&limit=50`);
+  const r = await rest(`knowledge_syllabus_generations?select=id,mode,topic,items_covered,exam_options,created_at,last_used_at,use_count&order=last_used_at.desc&limit=50`);
   if (!r.ok) throw new Error("SYLLABUS_LIST_FAILED");
   return await r.json();
 }

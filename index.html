@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.7.3";
+  var APP_VERSION = "0.7.4";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2327,9 +2327,21 @@
         var date=entries[0].created_at?new Date(entries[0].created_at).toLocaleDateString():"";
         var concepts=(entries[0].items_covered||[]).slice(1).map(function(ic){return shortItemLabel(ic.item);}).filter(Boolean);
         var abbrev=concepts.length?concepts.join(" - "):"";
+        var summaryCount=entries.filter(function(e){return e.mode==="summary";}).length;
+        var examCount=entries.filter(function(e){return e.mode==="questions";}).length;
         var btns=entries.map(function(it){
-          var modeLabel=it.mode==="summary"?"Resumen 📄":"Examen 📝";
-          return '<button type="button" class="ghost small" data-syllabus-id="'+it.id+'" style="margin-top:6px;margin-right:5px;">'+modeLabel+'</button>';
+          var d=it.created_at?new Date(it.created_at):null;
+          var time=d?d.toLocaleDateString()+" "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"";
+          var label, title;
+          if(it.mode==="summary"){
+            label="Resumen 📄"+(summaryCount>1&&d?(" · "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})):"");
+            title="Resumen generado "+time;
+          } else {
+            var opts=it.exam_options||{};
+            label="Examen 📝"+(examCount>1?(" · "+(opts.count||"?")+"p "+(opts.examType||"Mixto")):"");
+            title="Examen ("+(opts.count||"?")+" preguntas, "+(opts.examType||"Mixto")+", dificultad "+(opts.difficulty||"?")+") generado "+time;
+          }
+          return '<button type="button" class="ghost small" data-syllabus-id="'+it.id+'" title="'+escapeHtml(title)+'" style="margin-top:6px;margin-right:5px;">'+label+'</button>';
         }).join("");
         return '<div class="question-card" style="padding:10px 12px;">'+
           '<div style="font-weight:600;font-size:13px;">'+escapeHtml(topic)+'</div>'+
