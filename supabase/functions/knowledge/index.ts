@@ -919,6 +919,33 @@ async function searchCommonsImages(term: string, limit = 12) {
   return { images };
 }
 
+async function searchCommonsImagesMulti(terms: string[], limitTotal = 12) {
+  const cleanTerms = [...new Set(terms.map(t => cleanText(t, 200)).filter(Boolean))].slice(0, 6);
+  if (!cleanTerms.length) return { images: [] };
+  const perTerm = Math.max(3, Math.ceil(limitTotal / cleanTerms.length));
+  const results: any[][] = [];
+  for (const t of cleanTerms) {
+    const { images } = await searchCommonsImages(t, perTerm);
+    results.push(images);
+  }
+  const seen = new Set<string>();
+  const merged: any[] = [];
+  let round = 0;
+  let more = true;
+  while (more && merged.length < limitTotal) {
+    more = false;
+    for (const arr of results) {
+      const img = arr[round];
+      if (img) {
+        more = true;
+        if (!seen.has(img.thumbUrl)) { seen.add(img.thumbUrl); merged.push(img); }
+      }
+    }
+    round++;
+  }
+  return { images: merged };
+}
+
 async function appendSyllabusWebResearch(generationId: number, content: string) {
   const clean = String(content || "").trim();
   if (!clean) throw new Error("CONTENT_REQUIRED");
@@ -981,6 +1008,10 @@ Deno.serve(async (req:Request)=>{
       return json({ok:true,...await webResearch(user,topic)});
     }
     if(action==="searchImages"){
+      const terms=Array.isArray(body.terms)?body.terms.map((t:any)=>cleanText(t,200)).filter(Boolean):[];
+      if(terms.length){
+        return json({ok:true,...await searchCommonsImagesMulti(terms)});
+      }
       const term=cleanText(body.term,200);
       return json({ok:true,...await searchCommonsImages(term)});
     }
