@@ -32,11 +32,32 @@ def test_local_page_extraction_preserves_page_numbers():
         assert "figura(s)" in pages[1]["content"]
 
 
-def test_local_ingest_source_is_explicitly_non_ai():
+def test_local_ingest_has_no_ai_worker_dependency():
     source = Path(__file__).with_name("local_ingest.py").read_text(
         encoding="utf-8"
     )
-    assert 'worker.AI_PROVIDER = "local"' in source
-    assert '"ai_used": False' in source
+    pipeline = Path(__file__).with_name("local_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "import worker" not in source
+    assert "openai" not in source.lower()
+    assert "gemini" not in source.lower()
+    assert "google" not in source.lower()
     assert "OpenAI(" not in source
     assert "genai.Client(" not in source
+
+    assert "openai" not in pipeline.lower()
+    assert "gemini" not in pipeline.lower()
+    assert "google" not in pipeline.lower()
+    assert '"ai_used": False' in pipeline
+
+
+def test_local_pipeline_contains_only_local_figure_extraction():
+    source = Path(__file__).with_name("local_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+    assert "fitz" in source
+    assert "get_image_info" in source
+    assert "get_pixmap" in source
+    assert "pdf_visual_figure_v2" in source
