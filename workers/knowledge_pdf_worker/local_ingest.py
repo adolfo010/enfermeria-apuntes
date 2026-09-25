@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from urllib.parse import quote
 
 import fitz
 
@@ -17,7 +18,7 @@ def local_upsert_document(
     fingerprint: str,
 ) -> tuple[int, bool]:
     file_name = pdf_path.name
-    encoded_fp = local_pipeline.quote(fingerprint, safe="") if hasattr(local_pipeline, "quote") else fingerprint.replace(":", "%3A")
+    encoded_fp = quote(fingerprint, safe="")
 
     existing = local_pipeline.supabase_request(
         "knowledge_documents?fingerprint=eq."
@@ -38,13 +39,6 @@ def local_upsert_document(
         # Reprocesamiento controlado: primero se eliminan relaciones y datos
         # derivados. Los objetos de Storage se conservan y se sobrescriben
         # mediante x-upsert durante la reconstrucción.
-        local_pipeline.supabase_request(
-            "knowledge_fragment_figures?fragment_id=in."
-            + "(select fragment_id from knowledge_fragments where document_id=eq."
-            + str(document_id)
-            + ")",
-            "DELETE",
-        )
         local_pipeline.supabase_request(
             f"knowledge_figures?document_id=eq.{document_id}",
             "DELETE",
