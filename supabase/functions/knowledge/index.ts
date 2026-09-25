@@ -819,7 +819,7 @@ async function generateFromSyllabusCore(user: any, mode: string, syllabusText: s
   if (mode === "summary") {
     const detailLevel = Math.max(1, Math.min(4, Number(examOptions.detailLevel) || 2));
     const useBullets = examOptions.summaryFormat === "bullets";
-    const maxTok = [6000, 12000, 16000, 20000][detailLevel - 1];
+    const maxTok = [4000, 10000, 12000, 14000][detailLevel - 1];
 
     const depthInstructions = [
       /* 1 esquemático */
