@@ -500,69 +500,163 @@ def figure_caption_from_text(text: str, figure_number: int | None) -> str | None
     return None
 
 
+
+def _figure_captions(page) -> list[dict]:
+    # -----------------------------------------------------------------------
+    # Las leyendas/captions suelen ser texto PDF independiente de la imagen.
+    # Se detectan localmente, sin OCR ni IA.
+    # -----------------------------------------------------------------------
+    captions = []
+    pattern = re.compile(
+        r"(?i)\b(?:figura|fig\.?|lámina|lamina|ilustración|ilustracion)\s*"
+        r"(?:n[°º.]?\s*)?(\d+(?:[.:-]\d+)*)\b"
+    )
+    for block in page.get_text("blocks"):
+        text = str(block[4] or "").strip()
+        match = pattern.search(text)
+        if not match:
+            continue
+        captions.append({
+            "bbox": fitz.Rect(block[:4]),
+            "text": re.sub(r"\s+", " ", text).strip(),
+            "number": match.group(1),
+        })
+    return captions
+
+
+def _expanded_figure_bbox(page, bbox, padding: float = 42.0) -> fitz.Rect:
+    # -----------------------------------------------------------------------
+    # Amplía la figura con textos/etiquetas cercanos que están fuera del
+    # objeto de imagen.
+    # -----------------------------------------------------------------------
+    region = fitz.Rect(bbox)
+    expanded = fitz.Rect(
+        max(page.rect.x0, region.x0 - padding),
+        max(page.rect.y0, region.y0 - padding),
+        min(page.rect.x1, region.x1 + padding),
+        min(page.rect.y1, region.y1 + padding),
+    )
+    for block in page.get_text("blocks"):
+        br = fitz.Rect(block[:4])
+        if expanded.intersects(br):
+            region |= br
+    return region
+
+
 def extract_page_figures(page, page_number: int) -> list[dict]:
     # -----------------------------------------------------------------------
-    # Extrae imágenes embebidas reales. get_image_info aporta XREF y bbox.
-    # Las imágenes inline sin XREF se rasterizan únicamente en su bbox.
+    # Reconstrucción visual local de figuras.
+    #
+    # El PDF puede guardar la ilustración/fotografía como imagen embebida y
+    # las etiquetas, números, flechas y referencias como objetos separados.
+    # Por eso rasterizamos la región visual completa con PyMuPDF.
+    #
+    # Todo este proceso es local y no utiliza IA.
     # -----------------------------------------------------------------------
-    figures = []
-    seen = set()
     infos = page.get_image_info(xrefs=True)
+    candidates = []
+    seen = set()
 
     for order, info in enumerate(infos, start=1):
         bbox = tuple(info.get("bbox") or ())
-        xref = int(info.get("xref") or 0)
         if len(bbox) != 4:
             continue
-
+        xref = int(info.get("xref") or 0)
         key = (xref, figure_bbox_string(bbox))
         if key in seen:
             continue
         seen.add(key)
 
-        if xref:
-            try:
-                extracted = page.parent.extract_image(xref)
-                image_bytes = extracted["image"]
-                extension = extracted.get("ext", "png").lower()
-                content_type = {
-                    "jpg": "image/jpeg",
-                    "jpeg": "image/jpeg",
-                    "png": "image/png",
-                    "jp2": "image/jp2",
-                    "webp": "image/webp",
-                }.get(extension, f"image/{extension}")
-            except Exception:
-                image_bytes = None
-                extension = "png"
-                content_type = "image/png"
-        else:
-            # ----------------------------------------------------------------
-            # Imagen inline: se conserva visualmente mediante rasterización.
-            # ----------------------------------------------------------------
-            pix = page.get_pixmap(clip=bbox, dpi=180, alpha=False)
-            image_bytes = pix.tobytes("png")
-            extension = "png"
-            content_type = "image/png"
-
-        if not image_bytes:
+        width = int(info.get("width") or 0)
+        height = int(info.get("height") or 0)
+        if width < 32 or height < 32:
             continue
+
+        candidates.append({
+            "order": order,
+            "xref": xref if xref else None,
+            "bbox": fitz.Rect(bbox),
+            "width": width,
+            "height": height,
+        })
+
+    if not candidates:
+        return []
+
+    captions = _figure_captions(page)
+    groups = []
+    assigned = set()
+
+    if captions:
+        for caption in captions:
+            nearby = []
+            for candidate in candidates:
+                center_y = candidate["bbox"].y0 + candidate["bbox"].height / 2
+                distance = abs(center_y - caption["bbox"].y0)
+                if distance <= max(page.rect.height * 0.55, 180):
+                    nearby.append((distance, candidate))
+
+            if nearby:
+                min_distance = min(x[0] for x in nearby)
+                pool = [x[1] for x in nearby if x[0] <= min_distance + 220]
+                if pool:
+                    group_bbox = fitz.Rect(pool[0]["bbox"])
+                    for candidate in pool[1:]:
+                        group_bbox |= candidate["bbox"]
+                    groups.append({
+                        "order": min(x["order"] for x in pool),
+                        "xref": pool[0]["xref"],
+                        "xrefs": [x["xref"] for x in pool if x["xref"] is not None],
+                        "bbox": group_bbox,
+                        "caption": caption["text"],
+                        "figure_number": caption["number"],
+                    })
+                    assigned.update(id(x) for x in pool)
+
+    for candidate in candidates:
+        if id(candidate) in assigned:
+            continue
+        groups.append({
+            "order": candidate["order"],
+            "xref": candidate["xref"],
+            "xrefs": [candidate["xref"]] if candidate["xref"] is not None else [],
+            "bbox": candidate["bbox"],
+            "caption": None,
+            "figure_number": None,
+        })
+
+    groups.sort(key=lambda x: (x["bbox"].y0, x["bbox"].x0, x["order"]))
+
+    figures = []
+    for figure_order, group in enumerate(groups, start=1):
+        native_bbox = group["bbox"]
+        visual_bbox = _expanded_figure_bbox(page, native_bbox, padding=42.0)
+
+        pix = page.get_pixmap(
+            clip=visual_bbox,
+            dpi=180,
+            alpha=False,
+        )
+        image_bytes = pix.tobytes("png")
 
         figures.append({
             "page": page_number,
-            "order": order,
-            "xref": xref if xref else None,
-            "bbox": bbox,
-            "bbox_text": figure_bbox_string(bbox),
+            "order": figure_order,
+            "xref": group["xref"],
+            "xrefs": group["xrefs"],
+            "bbox": tuple(visual_bbox),
+            "native_bbox": tuple(native_bbox),
+            "bbox_text": figure_bbox_string(visual_bbox),
             "bytes": image_bytes,
-            "extension": extension,
-            "content_type": content_type,
-            "width": int(info.get("width") or 0),
-            "height": int(info.get("height") or 0),
+            "extension": "png",
+            "content_type": "image/png",
+            "width": int(pix.width),
+            "height": int(pix.height),
+            "caption": group["caption"],
+            "figure_number": group["figure_number"],
         })
 
     return figures
-
 
 def next_figure_key(document_id: int) -> int:
     # -----------------------------------------------------------------------
@@ -598,12 +692,25 @@ def save_page_figures(document_id: int, page, page_number: int, fragment_id: int
         figure_number = figure_number_from_text(page_text, item["order"])
         caption = figure_caption_from_text(page_text, figure_number)
 
+        # La reconstrucción visual local ya puede haber obtenido el número y
+        # la leyenda exactos de la figura. Se prefieren esos datos.
+        if item.get("figure_number") is not None:
+            raw_number = str(item["figure_number"])
+            number_match = re.search(r"(\d+)$", raw_number)
+            figure_number = int(number_match.group(1)) if number_match else figure_number
+        if item.get("caption"):
+            caption = item["caption"]
+
         metadata = {
-            "extractor": "native_pdf_image_v1",
+            "extractor": "pdf_visual_figure_v2",
             "image_order": item["order"],
             "width": item["width"],
             "height": item["height"],
             "inline_image": item["xref"] is None,
+            "source_xrefs": item.get("xrefs", []),
+            "native_bbox": item.get("native_bbox"),
+            "visual_bbox": item.get("bbox"),
+            "ai_used": False,
         }
 
         # ----------------------------------------------------------------
