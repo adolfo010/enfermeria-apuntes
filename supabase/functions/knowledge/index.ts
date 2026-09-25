@@ -569,6 +569,15 @@ async function generateFromSyllabus(user: any, mode: string, syllabusText: strin
   return { ...result, fromCache: false, generationId };
 }
 
+async function deleteSyllabusGeneration(user: any, id: number) {
+  const found = await rest(`knowledge_syllabus_generations?id=eq.${id}&select=id,user_id&limit=1`);
+  const row = Array.isArray(found) ? found[0] : null;
+  if (!row) throw new Error("NOT_FOUND");
+  if (String(row.user_id) !== String(user.id)) throw new Error("FORBIDDEN");
+  await rest(`knowledge_syllabus_generations?id=eq.${id}`, { method: "DELETE" });
+  return { deleted: id };
+}
+
 async function listSyllabusGenerations() {
   const r = await rest(`knowledge_syllabus_generations?select=id,mode,topic,items_covered,exam_options,created_at,last_used_at,use_count&order=last_used_at.desc&limit=50`);
   if (!r.ok) throw new Error("SYLLABUS_LIST_FAILED");
@@ -1293,6 +1302,11 @@ Deno.serve(async (req:Request)=>{
       const id=Number(body.id);
       if(!Number.isFinite(id)) throw new Error("ATTEMPT_ID_REQUIRED");
       return json({ok:true,...await getExamAttempt(id)});
+    }
+    if(action==="deleteSyllabusGeneration"){
+      const id=Number(body.id);
+      if(!Number.isFinite(id)) throw new Error("SYLLABUS_ID_REQUIRED");
+      return json({ok:true,...await deleteSyllabusGeneration(user,id)});
     }
     if(action==="appendSyllabusWebResearch"){
       const generationId=Number(body.generationId);
