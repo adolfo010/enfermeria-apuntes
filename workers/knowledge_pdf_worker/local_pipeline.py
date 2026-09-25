@@ -286,12 +286,41 @@ def extract_page_figures(page, page_number: int) -> list[dict]:
             page, native_bbox, padding=42.0
         )
 
-        pix = page.get_pixmap(
-            clip=visual_bbox,
-            dpi=180,
-            alpha=False,
-        )
-        image_bytes = pix.tobytes("png")
+        try:
+            pix = page.get_pixmap(
+                clip=visual_bbox,
+                dpi=180,
+                alpha=False,
+            )
+            image_bytes = pix.tobytes("png")
+            render_dpi = 180
+        except Exception as first_error:
+            # Some PDFs contain unusual page/image dimensions that make
+            # MuPDF's PNG writer reject the raster dimensions. Retry at a
+            # lower resolution before falling back to the native image.
+            try:
+                pix = page.get_pixmap(
+                    clip=visual_bbox,
+                    dpi=120,
+                    alpha=False,
+                )
+                image_bytes = pix.tobytes("png")
+                render_dpi = 120
+            except Exception:
+                try:
+                    raw = page.parent.extract_image(group["xref"]) if group["xref"] else None
+                except Exception:
+                    raw = None
+                if not raw or not raw.get("image"):
+                    print(
+                        f"\\nAdvertencia: no se pudo rasterizar figura "
+                        f"página {page_number}, orden {figure_order}: {first_error}",
+                        flush=True,
+                    )
+                    continue
+                image_bytes = raw["image"]
+                render_dpi = None
+                pix = None
 
         figures.append(
             {
@@ -305,8 +334,9 @@ def extract_page_figures(page, page_number: int) -> list[dict]:
                 "bytes": image_bytes,
                 "extension": "png",
                 "content_type": "image/png",
-                "width": int(pix.width),
-                "height": int(pix.height),
+                "width": int(pix.width) if pix is not None else None,
+                "height": int(pix.height) if pix is not None else None,
+                "render_dpi": render_dpi,
                 "caption": group["caption"],
                 "figure_number": group["figure_number"],
             }
