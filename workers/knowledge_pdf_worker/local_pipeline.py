@@ -39,15 +39,27 @@ def supabase_request(
     }
     if headers:
         merged.update(headers)
-    response = requests.request(
-        method,
-        f"{SUPABASE_URL}/rest/v1/{path}",
-        headers=merged,
-        json=body,
-        timeout=(30, 120),
-    )
-    response.raise_for_status()
-    return response
+    last_error = None
+    for attempt in range(5):
+        try:
+            response = requests.request(
+                method,
+                f"{SUPABASE_URL}/rest/v1/{path}",
+                headers=merged,
+                json=body,
+                timeout=(30, 120),
+            )
+            if response.status_code not in (429, 502, 503, 504):
+                response.raise_for_status()
+                return response
+            last_error = RuntimeError(f"Supabase HTTP {response.status_code}")
+        except requests.RequestException as exc:
+            last_error = exc
+        if attempt < 4:
+            delay = 2 ** attempt
+            print(f"\nReintentando Supabase en {delay}s ({attempt + 1}/4)...", flush=True)
+            time.sleep(delay)
+    raise last_error
 
 
 def storage_request(
