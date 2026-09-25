@@ -21,4 +21,4 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r workers/knowledge_pdf_worker/requirements.txt pytest
       - name: Ejecutar pruebas
-        run: pytest -q workers/knowledge_pdf_worker/test_worker.py
+        run: pytest -q workers/knowledge_pdf_worker/test_worker.py workers/knowledge_pdf_worker/test_local_ingest.py
