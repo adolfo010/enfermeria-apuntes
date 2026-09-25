@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -100,14 +101,20 @@ def local_upsert_document(
 def extract_local_pages(pdf_path: Path) -> list[dict]:
     pages = []
     pdf = fitz.open(str(pdf_path))
+    started = time.time()
     try:
         for page_number, page in enumerate(pdf, start=1):
             text = page.get_text("text").strip()
+            elapsed = max(time.time() - started, 0.001)
+            rate = page_number / elapsed
+            eta = (len(pdf) - page_number) / rate if rate else 0
+            print(f"\rTexto: página {page_number}/{len(pdf)} | {rate:.1f} pág/s | ETA {eta/60:.1f} min", end="", flush=True)
             if not text:
                 text = "[Página con figura(s) sin texto académico extraíble]"
             pages.append({"page": page_number, "content": text})
     finally:
         pdf.close()
+    print()
     return pages
 
 
