@@ -108,3 +108,34 @@ def test_figure_only_mode_has_no_direct_ai_calls() -> None:
     assert "genai" not in names
     assert "extract_chunk" not in names
     assert "extract_chunk_with_retries" not in names
+
+
+def test_visual_figure_keeps_reference_text_without_ai() -> None:
+    # El texto de referencia se crea como objeto PDF independiente de la imagen.
+    # La extracción debe reconstruir visualmente ambos elementos.
+    import fitz
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf = Path(tmp) / "figure.pdf"
+        doc = fitz.open()
+        page = doc.new_page(width=400, height=300)
+
+        source = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 120, 80), 0)
+        source.clear_with(0x88AACC)
+        page.insert_image(fitz.Rect(100, 80, 300, 200), pixmap=source)
+        page.insert_text((305, 120), "Cromosoma")
+        page.insert_text((100, 55), "Figura 1 Anatomía de prueba")
+        doc.save(pdf)
+        doc.close()
+        source = None
+
+        opened = fitz.open(pdf)
+        try:
+            figures = extract_page_figures(opened[0], 1)
+            assert len(figures) == 1
+            assert figures[0]["caption"].startswith("Figura 1")
+            bbox = figures[0]["bbox"]
+            assert bbox[2] >= 305
+            assert bbox[1] <= 55
+        finally:
+            opened.close()
