@@ -1,43 +1,60 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 from pathlib import Path
-from urllib.parse import quote
 
 import fitz
 
-import worker
+import local_pipeline
 
 
 LOCAL_PROCESSING_VERSION = "local+visual-figure-v2"
 
 
-def local_file_fingerprint(pdf_path: Path) -> str:
-    digest = hashlib.sha256()
-    with pdf_path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return "sha256:" + digest.hexdigest()
-
-
-def local_upsert_document(pdf_path: Path, page_count: int, fingerprint: str) -> int:
+def local_upsert_document(
+    pdf_path: Path,
+    page_count: int,
+    fingerprint: str,
+) -> tuple[int, bool]:
     file_name = pdf_path.name
-    encoded_fp = quote(fingerprint, safe="")
-    existing = worker.supabase_request(
-        "knowledge_documents?fingerprint=eq." + encoded_fp
+    encoded_fp = local_pipeline.quote(fingerprint, safe="") if hasattr(local_pipeline, "quote") else fingerprint.replace(":", "%3A")
+
+    existing = local_pipeline.supabase_request(
+        "knowledge_documents?fingerprint=eq."
+        + encoded_fp
         + "&select=id,processing_status,page_count&limit=1"
     ).json()
 
     if existing:
-        document_id = int(existing[0]["id"])
-        worker.supabase_request(
-            f"knowledge_fragments?document_id=eq.{document_id}", "DELETE"
+        row = existing[0]
+        document_id = int(row["id"])
+
+        if (
+            row.get("processing_status") == "completed"
+            and int(row.get("page_count") or 0) == page_count
+        ):
+            return document_id, True
+
+        # Reprocesamiento controlado: primero se eliminan relaciones y datos
+        # derivados. Los objetos de Storage se conservan y se sobrescriben
+        # mediante x-upsert durante la reconstrucción.
+        local_pipeline.supabase_request(
+            "knowledge_fragment_figures?fragment_id=in."
+            + "(select fragment_id from knowledge_fragments where document_id=eq."
+            + str(document_id)
+            + ")",
+            "DELETE",
         )
-        worker.supabase_request(
-            f"knowledge_figures?document_id=eq.{document_id}", "DELETE"
+        local_pipeline.supabase_request(
+            f"knowledge_figures?document_id=eq.{document_id}",
+            "DELETE",
         )
-        worker.supabase_request(
+        local_pipeline.supabase_request(
+            f"knowledge_fragments?document_id=eq.{document_id}",
+            "DELETE",
+        )
+
+        local_pipeline.supabase_request(
             f"knowledge_documents?id=eq.{document_id}",
             "PATCH",
             {
@@ -49,15 +66,22 @@ def local_upsert_document(pdf_path: Path, page_count: int, fingerprint: str) -> 
                 "source_type": "local_pdf",
                 "subject_area": "enfermeria",
                 "fingerprint": fingerprint,
+                "metadata": {
+                    "ai_used": False,
+                    "text_extraction": "PyMuPDF",
+                    "figure_extraction": "pdf_visual_figure_v2",
+                    "source": "conversation_local_upload",
+                },
             },
         )
-        return document_id
+        return document_id, False
 
-    response = worker.supabase_request(
+    local_id = "local-upload-" + fingerprint.removeprefix("sha256:")[:32]
+    response = local_pipeline.supabase_request(
         "knowledge_documents",
         "POST",
         {
-            "drive_file_id": None,
+            "drive_file_id": local_id,
             "file_name": file_name,
             "mime_type": "application/pdf",
             "fingerprint": fingerprint,
@@ -71,11 +95,12 @@ def local_upsert_document(pdf_path: Path, page_count: int, fingerprint: str) -> 
                 "ai_used": False,
                 "text_extraction": "PyMuPDF",
                 "figure_extraction": "pdf_visual_figure_v2",
+                "source": "conversation_local_upload",
             },
         },
         {"Prefer": "return=representation"},
     )
-    return int(response.json()[0]["id"])
+    return int(response.json()[0]["id"]), False
 
 
 def extract_local_pages(pdf_path: Path) -> list[dict]:
@@ -98,32 +123,43 @@ def process_local_pdf(pdf_path: Path) -> None:
     if pdf_path.suffix.lower() != ".pdf":
         raise SystemExit("El archivo indicado no es PDF.")
 
-    worker.require_figure_env()
+    local_pipeline.require_env()
 
-    # Guardrail: este flujo no crea clientes OpenAI/Gemini ni llama funciones de IA.
-    worker.AI_PROVIDER = "local"
+    fingerprint = local_pipeline.local_file_fingerprint(pdf_path)
 
-    fingerprint = local_file_fingerprint(pdf_path)
     pdf = fitz.open(str(pdf_path))
     page_count = len(pdf)
     pdf.close()
 
     print(f"PDF local: {pdf_path.name}")
     print(f"Páginas: {page_count}")
-    print("IA: DESACTIVADA")
+    print("IA: DESACTIVADA — pipeline sin dependencias de OpenAI/Gemini")
 
-    document_id = local_upsert_document(pdf_path, page_count, fingerprint)
+    document_id, already_completed = local_upsert_document(
+        pdf_path,
+        page_count,
+        fingerprint,
+    )
     print(f"Documento Supabase: {document_id}")
 
+    if already_completed:
+        print("El mismo PDF ya está procesado con esta huella. No se reprocesa.")
+        return
+
     pages = extract_local_pages(pdf_path)
-    page_to_fragment = worker.save_pages(document_id, pages, [])
+    page_to_fragment = local_pipeline.save_pages(
+        document_id,
+        pages,
+    )
     print(f"Fragmentos creados/actualizados: {len(page_to_fragment)}")
 
-    figure_count = worker.extract_and_save_figures(
-        pdf_path, document_id, page_to_fragment
+    figure_count = local_pipeline.extract_and_save_figures(
+        pdf_path,
+        document_id,
+        page_to_fragment,
     )
 
-    worker.supabase_request(
+    local_pipeline.supabase_request(
         f"knowledge_documents?id=eq.{document_id}",
         "PATCH",
         {
@@ -135,6 +171,9 @@ def process_local_pdf(pdf_path: Path) -> None:
                 "text_extraction": "PyMuPDF",
                 "figure_extraction": "pdf_visual_figure_v2",
                 "source": "conversation_local_upload",
+                "page_count": page_count,
+                "fragment_count": len(page_to_fragment),
+                "figure_count": figure_count,
             },
         },
     )
