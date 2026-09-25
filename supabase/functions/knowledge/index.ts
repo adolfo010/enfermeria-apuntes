@@ -5,7 +5,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") ?? "gpt-5.6-luna";
-const OPENAI_TIMEOUT_MS = Number(Deno.env.get("OPENAI_TIMEOUT_MS") ?? "180000");
+const OPENAI_TIMEOUT_MS = Number(Deno.env.get("OPENAI_TIMEOUT_MS") ?? "90000");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -819,7 +819,7 @@ async function generateFromSyllabusCore(user: any, mode: string, syllabusText: s
   if (mode === "summary") {
     const detailLevel = Math.max(1, Math.min(4, Number(examOptions.detailLevel) || 2));
     const useBullets = examOptions.summaryFormat === "bullets";
-    const maxTok = [4000, 10000, 12000, 14000][detailLevel - 1];
+    const maxTok = [3000, 6000, 8000, 9000][detailLevel - 1];
 
     const depthInstructions = [
       /* 1 esquemático */
@@ -1324,7 +1324,10 @@ Deno.serve(async (req:Request)=>{
     }
     return json({error:"INVALID_ACTION"},400);
   } catch(e:any) {
-    const msg=String(e?.message||e);
+    const raw=String(e?.message||e);
+    const msg = (e?.name==="AbortError" || raw.toLowerCase().includes("abort"))
+      ? "La generación tardó demasiado. Intentá con un nivel de detalle menor o un eje más corto."
+      : raw;
     const status=msg==="UNAUTHORIZED"?401:400;
     return json({error:msg},status);
   }
