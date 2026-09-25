@@ -10,6 +10,9 @@ import fitz
 import worker
 
 
+LOCAL_PROCESSING_VERSION = "local+visual-figure-v2"
+
+
 def local_file_fingerprint(pdf_path: Path) -> str:
     digest = hashlib.sha256()
     with pdf_path.open("rb") as fh:
@@ -22,8 +25,8 @@ def local_upsert_document(pdf_path: Path, page_count: int, fingerprint: str) -> 
     file_name = pdf_path.name
     encoded_fp = quote(fingerprint, safe="")
     existing = worker.supabase_request(
-        "knowledge_documents?fingerprint=eq." + encoded_fp +
-        "&select=id,processing_status&page_count&limit=1"
+        "knowledge_documents?fingerprint=eq." + encoded_fp
+        + "&select=id,processing_status,page_count&limit=1"
     ).json()
 
     if existing:
@@ -42,7 +45,7 @@ def local_upsert_document(pdf_path: Path, page_count: int, fingerprint: str) -> 
                 "title": file_name,
                 "page_count": page_count,
                 "processing_status": "running",
-                "processing_version": "local+visual-figure-v2",
+                "processing_version": LOCAL_PROCESSING_VERSION,
                 "source_type": "local_pdf",
                 "subject_area": "enfermeria",
                 "fingerprint": fingerprint,
@@ -63,7 +66,7 @@ def local_upsert_document(pdf_path: Path, page_count: int, fingerprint: str) -> 
             "subject_area": "enfermeria",
             "page_count": page_count,
             "processing_status": "running",
-            "processing_version": "local+visual-figure-v2",
+            "processing_version": LOCAL_PROCESSING_VERSION,
             "metadata": {
                 "ai_used": False,
                 "text_extraction": "PyMuPDF",
@@ -97,7 +100,7 @@ def process_local_pdf(pdf_path: Path) -> None:
 
     worker.require_figure_env()
 
-    # Este proceso no crea clientes OpenAI/Gemini ni llama a funciones de IA.
+    # Guardrail: este flujo no crea clientes OpenAI/Gemini ni llama funciones de IA.
     worker.AI_PROVIDER = "local"
 
     fingerprint = local_file_fingerprint(pdf_path)
@@ -126,7 +129,7 @@ def process_local_pdf(pdf_path: Path) -> None:
         {
             "page_count": page_count,
             "processing_status": "completed",
-            "processing_version": "local+visual-figure-v2",
+            "processing_version": LOCAL_PROCESSING_VERSION,
             "metadata": {
                 "ai_used": False,
                 "text_extraction": "PyMuPDF",
