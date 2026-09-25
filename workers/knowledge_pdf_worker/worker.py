@@ -508,7 +508,7 @@ def _figure_captions(page) -> list[dict]:
     # -----------------------------------------------------------------------
     captions = []
     pattern = re.compile(
-        r"(?i)\b(?:figura|fig\.?|lámina|lamina|ilustración|ilustracion)\s*"
+        r"(?i)^\s*(?:figura|fig\.?|lámina|lamina|ilustración|ilustracion)\s*"
         r"(?:n[°º.]?\s*)?(\d+(?:[.:-]\d+)*)\b"
     )
     for block in page.get_text("blocks"):
@@ -589,29 +589,37 @@ def extract_page_figures(page, page_number: int) -> list[dict]:
 
     if captions:
         for caption in captions:
-            nearby = []
-            for candidate in candidates:
-                center_y = candidate["bbox"].y0 + candidate["bbox"].height / 2
-                distance = abs(center_y - caption["bbox"].y0)
-                if distance <= max(page.rect.height * 0.55, 180):
-                    nearby.append((distance, candidate))
+            # Si la página tiene una sola leyenda real, normalmente todos los
+            # componentes visuales de esa página pertenecen a esa figura.
+            if len(captions) == 1:
+                pool = list(candidates)
+            else:
+                nearby = []
+                for candidate in candidates:
+                    center_y = candidate["bbox"].y0 + candidate["bbox"].height / 2
+                    distance = abs(center_y - caption["bbox"].y0)
+                    if distance <= max(page.rect.height * 0.55, 180):
+                        nearby.append((distance, candidate))
 
-            if nearby:
+                if not nearby:
+                    continue
+
                 min_distance = min(x[0] for x in nearby)
                 pool = [x[1] for x in nearby if x[0] <= min_distance + 220]
-                if pool:
-                    group_bbox = fitz.Rect(pool[0]["bbox"])
-                    for candidate in pool[1:]:
-                        group_bbox |= candidate["bbox"]
-                    groups.append({
-                        "order": min(x["order"] for x in pool),
-                        "xref": pool[0]["xref"],
-                        "xrefs": [x["xref"] for x in pool if x["xref"] is not None],
-                        "bbox": group_bbox,
-                        "caption": caption["text"],
-                        "figure_number": caption["number"],
-                    })
-                    assigned.update(id(x) for x in pool)
+
+            if pool:
+                group_bbox = fitz.Rect(pool[0]["bbox"])
+                for candidate in pool[1:]:
+                    group_bbox |= candidate["bbox"]
+                groups.append({
+                    "order": min(x["order"] for x in pool),
+                    "xref": pool[0]["xref"],
+                    "xrefs": [x["xref"] for x in pool if x["xref"] is not None],
+                    "bbox": group_bbox,
+                    "caption": caption["text"],
+                    "figure_number": caption["number"],
+                })
+                assigned.update(id(x) for x in pool)
 
     for candidate in candidates:
         if id(candidate) in assigned:
@@ -696,8 +704,10 @@ def save_page_figures(document_id: int, page, page_number: int, fragment_id: int
         # la leyenda exactos de la figura. Se prefieren esos datos.
         if item.get("figure_number") is not None:
             raw_number = str(item["figure_number"])
-            number_match = re.search(r"(\d+)$", raw_number)
-            figure_number = int(number_match.group(1)) if number_match else figure_number
+            # knowledge_figures.figure_number es entero. Los números
+            # compuestos como "3.32" se conservan completos en caption/metadata.
+            if re.fullmatch(r"\d+", raw_number):
+                figure_number = int(raw_number)
         if item.get("caption"):
             caption = item["caption"]
 
