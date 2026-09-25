@@ -570,8 +570,10 @@ async function generateFromSyllabus(user: any, mode: string, syllabusText: strin
 }
 
 async function deleteSyllabusGeneration(user: any, id: number) {
-  const found = await rest(`knowledge_syllabus_generations?id=eq.${id}&select=id,created_by&limit=1`);
-  const row = Array.isArray(found) ? found[0] : null;
+  const r = await rest(`knowledge_syllabus_generations?id=eq.${id}&select=id,created_by&limit=1`);
+  if (!r.ok) throw new Error("DELETE_FETCH_FAILED");
+  const rows = await r.json();
+  const row = Array.isArray(rows) ? rows[0] : null;
   if (!row) throw new Error("NOT_FOUND");
   if (row.created_by && row.created_by !== (user?.email ?? null)) throw new Error("FORBIDDEN");
   await rest(`knowledge_syllabus_generations?id=eq.${id}`, { method: "DELETE" });
