@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -455,6 +456,8 @@ def extract_and_save_figures(
     pdf = fitz.open(str(pdf_path))
     counter = next_figure_key(document_id)
     extracted_count = 0
+    started = time.time()
+    total_pages = len(pdf)
 
     try:
         for page_index in range(len(pdf)):
@@ -468,8 +471,14 @@ def extract_and_save_figures(
                 counter,
             )
             extracted_count += counter - before
+            page_number = page_index + 1
+            elapsed = max(time.time() - started, 0.001)
+            rate = page_number / elapsed
+            eta = (total_pages - page_number) / rate if rate else 0
+            print(f"\rFiguras: página {page_number}/{total_pages} | figuras {extracted_count} | {rate:.2f} pág/s | ETA {eta/60:.1f} min", end="", flush=True)
     finally:
         pdf.close()
+    print()
 
     return extracted_count
 
