@@ -173,6 +173,13 @@ def _expanded_figure_bbox(page, bbox, padding: float = 42.0) -> fitz.Rect:
         br = fitz.Rect(block[:4])
         if expanded.intersects(br):
             region |= br
+
+    # Text blocks can extend the union outside the page bounds. MuPDF can
+    # reject such oversized/invalid raster dimensions with "bandwriter
+    # header dimensions/setup". Always clamp the final visual region.
+    region &= page.rect
+    if region.is_empty or region.width <= 1 or region.height <= 1:
+        return expanded & page.rect
     return region
 
 
