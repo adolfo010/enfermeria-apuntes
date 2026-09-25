@@ -484,7 +484,7 @@ function syllabusCacheKey(syllabusText: string, mode: string, examOptions: any) 
   const norm = syllabusText.trim().toLowerCase().replace(/\s+/g, " ");
   const optionsKey = mode === "questions"
     ? `${Number(examOptions?.count) || 10}|${(cleanText(examOptions?.examType, 80) || "Mixto").toLowerCase()}|${Number(examOptions?.difficulty) || 3}`
-    : "";
+    : `${Number(examOptions?.detailLevel) || 2}|${(examOptions?.summaryFormat === "bullets" ? "bullets" : "paragraphs")}`;
   return `${mode}|${optionsKey}|${norm}`;
 }
 
@@ -806,8 +806,27 @@ async function generateFromSyllabusCore(user: any, mode: string, syllabusText: s
   if (!source) throw new Error("NO_MATCHING_MATERIAL");
 
   if (mode === "summary") {
-    const prompt = `Sos un asistente académico para Licenciatura en Enfermería. Prepará apuntes de estudio para el eje temático "${topicTitle}" usando EXCLUSIVAMENTE las fuentes proporcionadas, que ya vienen agrupadas por ítem del eje (marcadas con "=== ÍTEM DEL EJE: ... ==="). Para cada ítem que tenga fuentes, escribí una sección propia con el título EXACTO del ítem como encabezado (formato "## <título del ítem>"), desarrollando el contenido en tus propias palabras a partir de las fuentes. No agregues conocimiento externo ni completes datos faltantes. Cada afirmación importante debe indicar su fuente y página entre paréntesis. Si un ítem no tiene fuentes en el material provisto, escribí su encabezado igual y anotá "Sin material disponible en la base para este ítem." en vez de inventar contenido. No repitas texto idéntico entre secciones si el mismo contenido aplica a varios ítems: elegí la sección más específica.\n\nFUENTES POR ÍTEM:\n${source}`;
-    const r = await callOpenAI(prompt, 12000);
+    const detailLevel = Math.max(1, Math.min(4, Number(examOptions.detailLevel) || 2));
+    const useBullets = examOptions.summaryFormat === "bullets";
+    const maxTok = [6000, 12000, 16000, 20000][detailLevel - 1];
+
+    const depthInstructions = [
+      /* 1 esquemático */
+      `Nivel de detalle: ESQUEMÁTICO. Cada ítem debe quedar en una lista de 3 a 6 puntos clave (los conceptos más importantes, sin desarrollo). No escribas párrafos; usá viñetas cortas.`,
+      /* 2 estándar */
+      `Nivel de detalle: ESTÁNDAR. Para cada ítem escribí 1 o 2 párrafos cortos que cubran los conceptos principales con algo de desarrollo. No es necesario agotar todos los detalles de las fuentes.`,
+      /* 3 detallado */
+      `Nivel de detalle: DETALLADO. Para cada ítem desarrollá en profundidad definiciones, mecanismos, relaciones anatómicas o fisiológicas y cualquier dato relevante que aparezca en las fuentes. Usá varios párrafos o subsecciones si el contenido lo justifica.`,
+      /* 4 exhaustivo */
+      `Nivel de detalle: EXHAUSTIVO. Para cada ítem agotá TODO el contenido disponible en las fuentes: variaciones, relaciones clínicas, datos complementarios, excepciones y cualquier detalle que un estudiante deba conocer. El resultado puede ser extenso; priorizá completitud sobre brevedad.`
+    ][detailLevel - 1];
+
+    const formatInstruction = useBullets
+      ? `Formato: estructurá cada sección con viñetas y sub-viñetas jerarquizadas (Markdown con - y espacios de indentación). No uses párrafos de texto corrido.`
+      : `Formato: escribí en párrafos de texto corrido, en prosa. Podés usar sub-encabezados (###) si el ítem lo justifica, pero el cuerpo debe ser prosa, no listas.`;
+
+    const prompt = `Sos un asistente académico para Licenciatura en Enfermería. Prepará apuntes de estudio para el eje temático "${topicTitle}" usando EXCLUSIVAMENTE las fuentes proporcionadas, que ya vienen agrupadas por ítem del eje (marcadas con "=== ÍTEM DEL EJE: ... ==="). Para cada ítem que tenga fuentes, escribí una sección propia con el título EXACTO del ítem como encabezado (formato "## <título del ítem>"). No agregues conocimiento externo ni completes datos faltantes. Cada afirmación importante debe indicar su fuente y página entre paréntesis. Si un ítem no tiene fuentes en el material provisto, escribí su encabezado igual y anotá "Sin material disponible en la base para este ítem." en vez de inventar contenido. No repitas texto idéntico entre secciones si el mismo contenido aplica a varios ítems: elegí la sección más específica.\n\n${depthInstructions}\n\n${formatInstruction}\n\nFUENTES POR ÍTEM:\n${source}`;
+    const r = await callOpenAI(prompt, maxTok);
     await recordUsage(user, "knowledgeSyllabusSummary", topicTitle, r.raw, fragments);
     return { summary: r.text, topic: topicTitle, itemsCovered, sources: fragments.map(sourceMeta) };
   }
@@ -1252,7 +1271,7 @@ Deno.serve(async (req:Request)=>{
     if(action==="generateFromSyllabus"){
       const mode=body.mode==="questions"?"questions":"summary";
       const syllabusText=String(body.syllabusText||"").slice(0,20000);
-      const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty};
+      const examOptions={count:body.count,examType:body.examType,difficulty:body.difficulty,detailLevel:body.detailLevel,summaryFormat:body.summaryFormat};
       const force=!!body.force;
       return json({ok:true,mode,...await generateFromSyllabus(user,mode,syllabusText,examOptions,force)});
     }

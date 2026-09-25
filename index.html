@@ -508,7 +508,7 @@
   "use strict";
 
   // Versión visible de la aplicación. Incrementar en cada actualización publicada.
-  var APP_VERSION = "0.8.7";
+  var APP_VERSION = "0.8.8";
   document.getElementById("appVersion").textContent = "Versión " + APP_VERSION;
 
   var SUPABASE_URL = "https://ytwemlejamslvsulnvam.supabase.co";
@@ -2301,6 +2301,8 @@
       '<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Pegá acá el título y los ítems de UN eje temático (como te lo da la cátedra), o elegí uno de arriba para editarlo. El sistema busca solo, en toda la base, el material de cada ítem — no hace falta seleccionar archivos ni fragmentos. Para temarios largos, cargá un eje por vez.</div>'+
       '<textarea id="temarioInput" placeholder="Ejemplo:&#10;EJE TEMÁTICO N° 2: ESQUELETO AXIAL (cabeza-cara-cuello-raquis-tórax)&#10;Cabeza: Esqueleto. Huesos. Divisiones. Orificios de la base del cráneo. Puntos del cráneo. El hueso temporal: función. Descripción general.&#10;Regiones. Órbitas. Definición. Contenido. Relaciones.&#10;Cuello: morfología. División. Esqueleto. Vísceras del cuello. Arterias. Venas. Músculos. Nervios." style="width:100%;min-height:220px;padding:12px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical;"></textarea>'+
       '<div class="exam-controls" style="margin-top:16px;">'+
+        '<div><label for="temarioSummaryDetail">Nivel de detalle <span style="font-weight:400;color:var(--muted)">(resumen)</span></label><select id="temarioSummaryDetail"><option value="1">Esquemático — puntos clave</option><option value="2" selected>Estándar</option><option value="3">Detallado</option><option value="4">Exhaustivo</option></select></div>'+
+        '<div><label for="temarioSummaryFormat">Formato <span style="font-weight:400;color:var(--muted)">(resumen)</span></label><select id="temarioSummaryFormat"><option value="paragraphs" selected>Párrafos</option><option value="bullets">Viñetas con jerarquía</option></select></div>'+
         '<div><label for="temarioExamCount">Cantidad de preguntas</label><select id="temarioExamCount"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select></div>'+
         '<div><label for="temarioExamType">Tipo</label><select id="temarioExamType"><option value="Mixto" selected>Mixto</option><option value="Opción múltiple">Opción múltiple</option><option value="Verdadero/Falso">Verdadero / Falso</option><option value="Respuesta corta">Respuesta corta</option><option value="Desarrollo">Desarrollo</option><option value="Caso clínico">Caso clínico</option></select></div>'+
         '<div><label for="temarioExamDifficulty">Dificultad</label><select id="temarioExamDifficulty"><option value="1">Básica</option><option value="2">Básica-intermedia</option><option value="3" selected>Intermedia</option><option value="4">Avanzada</option><option value="5">Muy avanzada</option></select></div>'+
@@ -2543,6 +2545,10 @@
     result.innerHTML='<div class="banner info" style="margin-top:10px;"><span class="spin"></span>&nbsp; '+(forceRegen?"Regenerando resumen desde cero (ignorando caché)…":"Buscando en toda la base de conocimiento el material de cada ítem del eje…")+'</div>';
     var params={action:"generateFromSyllabus",mode:mode,syllabusText:syllabusText};
     if(forceRegen) params.force=true;
+    if(mode==="summary"){
+      params.detailLevel=Number(document.getElementById("temarioSummaryDetail").value||2);
+      params.summaryFormat=document.getElementById("temarioSummaryFormat").value||"paragraphs";
+    }
     if(mode==="questions"){
       params.count=Number(document.getElementById("temarioExamCount").value||10);
       params.examType=document.getElementById("temarioExamType").value||"Mixto";
